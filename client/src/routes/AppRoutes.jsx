@@ -3,6 +3,8 @@ import { AuthProvider } from '../context/AuthContext';
 import Login from '../pages/Login';
 import ProtectedRoute from './ProtectedRoute';
 import DashboardLayout from '../components/layout/DashboardLayout';
+import RetailerLayout from '../components/layout/RetailerLayout';
+import DriverLayout from '../components/layout/DriverLayout';
 
 // Admin Pages
 import AdminDashboard from '../pages/admin/AdminDashboard';
@@ -17,6 +19,22 @@ import Reports from '../pages/admin/Reports';
 import Users from '../pages/admin/Users';
 import Staff from '../pages/admin/Staff';
 import Settings from '../pages/admin/Settings';
+import CashVerification from '../pages/admin/CashVerification';
+
+// Retailer Pages
+import RetailerDashboard from '../pages/retailer/RetailerDashboard';
+import RetailerPlaceOrder from '../pages/retailer/RetailerPlaceOrder';
+import RetailerOrders from '../pages/retailer/RetailerOrders';
+import RetailerOrderDetails from '../pages/retailer/RetailerOrderDetails';
+import RetailerPayments from '../pages/retailer/RetailerPayments';
+import RetailerProfile from '../pages/retailer/RetailerProfile';
+
+// Driver Pages
+import DriverDashboard from '../pages/driver/DriverDashboard';
+import DriverDeliveries from '../pages/driver/DriverDeliveries';
+import DriverCollections from '../pages/driver/DriverCollections';
+import DriverHistory from '../pages/driver/DriverHistory';
+import DriverProfile from '../pages/driver/DriverProfile';
 
 // Placeholder component for pages not yet implemented
 const ComingSoon = () => (
@@ -51,6 +69,7 @@ const AppRoutes = () => {
             <Route path="/admin/reports" element={<Reports />} />
             <Route path="/admin/users" element={<Users />} />
             <Route path="/admin/staff" element={<Staff />} />
+            <Route path="/admin/cash-verification" element={<CashVerification />} />
             <Route path="/admin/settings" element={<Settings />} />
             
             {/* Additional Admin Pages - Coming Soon */}
@@ -60,6 +79,29 @@ const AppRoutes = () => {
             <Route path="/admin/products" element={<ComingSoon />} />
             <Route path="/admin/inventory" element={<ComingSoon />} />
             <Route path="/admin/expenses" element={<ComingSoon />} />
+          </Route>
+        </Route>
+
+        {/* Retailer Routes */}
+        <Route element={<ProtectedRoute allowedRoles={['retailer']} />}>
+          <Route element={<RetailerLayout />}>
+            <Route path="/retailer/dashboard" element={<RetailerDashboard />} />
+            <Route path="/retailer/place-order" element={<RetailerPlaceOrder />} />
+            <Route path="/retailer/orders" element={<RetailerOrders />} />
+            <Route path="/retailer/orders/:id" element={<RetailerOrderDetails />} />
+            <Route path="/retailer/payments" element={<RetailerPayments />} />
+            <Route path="/retailer/profile" element={<RetailerProfile />} />
+          </Route>
+        </Route>
+
+        {/* Driver Routes */}
+        <Route element={<ProtectedRoute allowedRoles={['driver']} />}>
+          <Route element={<DriverLayout />}>
+            <Route path="/driver/dashboard" element={<DriverDashboard />} />
+            <Route path="/driver/deliveries" element={<DriverDeliveries />} />
+            <Route path="/driver/collections" element={<DriverCollections />} />
+            <Route path="/driver/history" element={<DriverHistory />} />
+            <Route path="/driver/profile" element={<DriverProfile />} />
           </Route>
         </Route>
 
