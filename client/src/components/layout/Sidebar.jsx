@@ -13,6 +13,7 @@ import {
   FiSettings,
   FiLogOut,
   FiUserPlus,
+  FiBriefcase,
 } from 'react-icons/fi';
 
 const Sidebar = ({ onClose }) => {
@@ -38,6 +39,7 @@ const Sidebar = ({ onClose }) => {
       items: [
         { path: '/admin/customers', label: 'Customers', icon: FiUsers },
         { path: '/admin/users', label: 'Users', icon: FiUserPlus },
+        { path: '/admin/staff', label: 'Staff', icon: FiBriefcase },
         { path: '/admin/vehicles', label: 'Vehicles', icon: FiPackage },
       ]
     },

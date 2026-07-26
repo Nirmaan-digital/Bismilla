@@ -15,6 +15,7 @@ import Ledgers from '../pages/admin/Ledgers';
 import Payments from '../pages/admin/Payments';
 import Reports from '../pages/admin/Reports';
 import Users from '../pages/admin/Users';
+import Staff from '../pages/admin/Staff';
 import Settings from '../pages/admin/Settings';
 
 // Placeholder component for pages not yet implemented
@@ -49,6 +50,7 @@ const AppRoutes = () => {
             <Route path="/admin/payments" element={<Payments />} />
             <Route path="/admin/reports" element={<Reports />} />
             <Route path="/admin/users" element={<Users />} />
+            <Route path="/admin/staff" element={<Staff />} />
             <Route path="/admin/settings" element={<Settings />} />
             
             {/* Additional Admin Pages - Coming Soon */}
