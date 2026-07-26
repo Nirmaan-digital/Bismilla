@@ -14,6 +14,7 @@ import {
   FiLogOut,
   FiUserPlus,
   FiBriefcase,
+  FiCheckCircle,
 } from 'react-icons/fi';
 
 const Sidebar = ({ onClose }) => {
@@ -48,6 +49,7 @@ const Sidebar = ({ onClose }) => {
       items: [
         { path: '/admin/ledgers', label: 'Ledgers', icon: FiFileText },
         { path: '/admin/payments', label: 'Payments', icon: FiCreditCard },
+        { path: '/admin/cash-verification', label: 'Cash Verification', icon: FiCheckCircle },
         { path: '/admin/reports', label: 'Reports', icon: FiPieChart },
       ]
     },
