@@ -1,38 +1,50 @@
-const express = require("express");
-const cors = require("cors");
-require("dotenv").config();
+const express = require('express');
+const cors = require('cors');
+const dotenv = require('dotenv');
 
-const pool = require("./config/db");
+// Import routes
+const authRoutes = require('./routes/auth');
+const userRoutes = require('./routes/users');
+const retailerRoutes = require('./routes/retailers');
+
+dotenv.config();
 
 const app = express();
+const PORT = process.env.PORT || 5000;
 
+// Middleware
 app.use(cors());
 app.use(express.json());
 
-console.log("DB_HOST:", process.env.DB_HOST);
-console.log("DB_USER:", process.env.DB_USER);
-console.log("DB_NAME:", process.env.DB_NAME);
-console.log("DB_PASSWORD:", process.env.DB_PASSWORD ? "Loaded" : "Not Loaded");
-// Test database connection
-async function testDB() {
-  try {
-    const conn = await pool.getConnection();
-    console.log("✅ MySQL Connected Successfully");
-    conn.release();
-  } catch (err) {
-    console.error("❌ Database Connection Failed");
-    console.error(err.message);
-  }
-}
-
-testDB();
-
-app.get("/", (req, res) => {
-  res.send("Backend is running...");
+// Test route
+app.get('/api/test', (req, res) => {
+  res.json({ 
+    success: true,
+    message: '✅ Backend is working!',
+    server: `Running on port ${PORT}`,
+    timestamp: new Date().toISOString()
+  });
 });
 
-const PORT = process.env.PORT || 5000;
+// API Routes
+app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/retailers', retailerRoutes);
 
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({ 
+    success: false, 
+    message: 'Route not found' 
+  });
+});
+
+// Start Server
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`✔ Server running on port ${PORT}`);
+  console.log(`📝 Available endpoints:`);
+  console.log(`  → http://localhost:${PORT}/api/test`);
+  console.log(`  → http://localhost:${PORT}/api/auth/login`);
+  console.log(`  → http://localhost:${PORT}/api/users`);
+  console.log(`  → http://localhost:${PORT}/api/retailers`);
 });
