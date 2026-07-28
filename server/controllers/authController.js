@@ -1,97 +1,123 @@
+const pool = require('../config/db');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const pool = require('../config/db');
 
-// Login
+// Login user
 const login = async (req, res) => {
   try {
+    console.log('🔐 Login attempt:', req.body);
     const { phone, password } = req.body;
-
+    
+    // Validate input
     if (!phone || !password) {
       return res.status(400).json({
         success: false,
-        message: 'Phone and password are required'
+        message: 'Phone number and password are required'
       });
     }
-
+    
+    // Find user by phone
     const [users] = await pool.query(
       'SELECT * FROM users WHERE phone = ?',
       [phone]
     );
-
+    
     if (users.length === 0) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid credentials'
+        message: 'Invalid phone number or password'
       });
     }
-
+    
     const user = users[0];
-
-    if (user.status === 'inactive') {
+    
+    // Check if user is active
+    if (user.status !== 'active') {
       return res.status(401).json({
         success: false,
-        message: 'Account is deactivated. Please contact admin.'
+        message: 'Your account is inactive. Please contact administrator.'
       });
     }
-
-    const isValidPassword = await bcrypt.compare(password, user.password);
-    if (!isValidPassword) {
+    
+    // Compare password
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    
+    if (!isPasswordValid) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid credentials'
+        message: 'Invalid phone number or password'
       });
     }
-
+    
+    // Update last login
+    await pool.query(
+      'UPDATE users SET last_login = NOW() WHERE id = ?',
+      [user.id]
+    );
+    
+    // Generate JWT token
     const token = jwt.sign(
-      { id: user.id, role: user.role },
-      process.env.JWT_SECRET,
+      { 
+        id: user.id, 
+        phone: user.phone, 
+        role: user.role,
+        name: user.name 
+      },
+      process.env.JWT_SECRET || 'your-secret-key',
       { expiresIn: '7d' }
     );
-
-    const { password: _, ...userData } = user;
-
-    res.json({
+    
+    console.log(`✅ User logged in: ${user.name} (${user.role})`);
+    
+    res.status(200).json({
       success: true,
       message: 'Login successful',
-      token,
-      user: userData
+      token: token,
+      data: {
+        id: user.id,
+        name: user.name,
+        phone: user.phone,
+        email: user.email,
+        role: user.role,
+        status: user.status
+      }
     });
-
   } catch (error) {
-    console.error('Login error:', error);
+    console.error('❌ Login error:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error during login'
+      message: 'Error during login',
+      error: error.message
     });
   }
 };
 
-// Get current user
+// Get current user info
 const getCurrentUser = async (req, res) => {
   try {
+    const userId = req.user.id;
     const [users] = await pool.query(
-      'SELECT id, name, phone, role, status, created_at FROM users WHERE id = ?',
-      [req.userId]
+      'SELECT id, name, phone, email, role, status, last_login FROM users WHERE id = ?',
+      [userId]
     );
-
+    
     if (users.length === 0) {
       return res.status(404).json({
         success: false,
         message: 'User not found'
       });
     }
-
-    res.json({
+    
+    res.status(200).json({
       success: true,
-      user: users[0]
+      data: users[0]
     });
-
   } catch (error) {
-    console.error('Get user error:', error);
+    console.error('❌ Error getting user:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error'
+      message: 'Error getting user info',
+      error: error.message
     });
   }
 };

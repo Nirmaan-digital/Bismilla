@@ -6,6 +6,8 @@ const dotenv = require('dotenv');
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const retailerRoutes = require('./routes/retailers');
+const staffRoutes = require('./routes/staff');
+const vehicleRoutes = require('./routes/vehicles');
 
 dotenv.config();
 
@@ -30,6 +32,8 @@ app.get('/api/test', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/retailers', retailerRoutes);
+app.use('/api/staff', staffRoutes);
+app.use('/api/vehicles', vehicleRoutes);
 
 // 404 handler
 app.use((req, res) => {
@@ -47,4 +51,6 @@ app.listen(PORT, () => {
   console.log(`  → http://localhost:${PORT}/api/auth/login`);
   console.log(`  → http://localhost:${PORT}/api/users`);
   console.log(`  → http://localhost:${PORT}/api/retailers`);
+  console.log(`  → http://localhost:${PORT}/api/staff`);
+  console.log(`  → http://localhost:${PORT}/api/vehicles`);
 });

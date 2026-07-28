@@ -1,12 +1,19 @@
 const express = require('express');
 const router = express.Router();
 const userController = require('../controllers/userController');
-const authMiddleware = require('../middleware/auth');
 
-router.use(authMiddleware);
+// User CRUD routes
+router.route('/')
+  .get(userController.getAllUsers)
+  .post(userController.createUser);
 
-router.get('/', userController.getAllUsers);
-router.post('/', userController.createUser);
-router.patch('/:id/toggle-status', userController.toggleStatus);
+router.route('/:id')
+  .get(userController.getUserById)
+  .put(userController.updateUser)
+  .delete(userController.deleteUser);
+
+router.patch('/:id/status', userController.toggleUserStatus);
+router.patch('/:id/password', userController.updatePassword);
+router.patch('/:id/lastlogin', userController.updateLastLogin);
 
 module.exports = router;

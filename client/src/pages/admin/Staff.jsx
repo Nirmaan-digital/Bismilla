@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   FiUsers, 
   FiPlus, 
@@ -16,104 +16,20 @@ import {
   FiEye,
   FiTrendingUp,
   FiTrendingDown,
-  FiBarChart2
+  FiBarChart2,
+  FiLoader
 } from 'react-icons/fi';
 import Button from '../../components/common/Button';
 import Badge from '../../components/common/Badge';
 import Modal from '../../components/common/Modal';
 import SearchInput from '../../components/common/SearchInput';
 import EmptyState from '../../components/common/EmptyState';
-
-// Mock staff data
-const mockStaff = [
-  {
-    id: 'STF-001',
-    name: 'Ramesh Kumar',
-    phone: '9876543220',
-    role: 'Driver',
-    vehicle: 'KA-01-AB-1234',
-    dailySalary: 500,
-    status: 'Active',
-    joinDate: '01 Jan 2024',
-    totalTrips: 45,
-    tripsThisMonth: 12,
-    salaryThisMonth: 6000,
-    trips: [
-      { date: '25 Jul 2026', tripId: 'TRIP-001', role: 'Driver', status: 'Completed' },
-      { date: '24 Jul 2026', tripId: 'TRIP-002', role: 'Driver', status: 'Completed' },
-      { date: '23 Jul 2026', tripId: 'TRIP-003', role: 'Driver', status: 'Completed' },
-      { date: '22 Jul 2026', tripId: 'TRIP-004', role: 'Driver', status: 'Completed' },
-    ]
-  },
-  {
-    id: 'STF-002',
-    name: 'Salim Ahmed',
-    phone: '9876543221',
-    role: 'Driver',
-    vehicle: 'KA-01-CD-5678',
-    dailySalary: 500,
-    status: 'Active',
-    joinDate: '15 Feb 2024',
-    totalTrips: 32,
-    tripsThisMonth: 8,
-    salaryThisMonth: 4000,
-    trips: [
-      { date: '25 Jul 2026', tripId: 'TRIP-001', role: 'Driver', status: 'Completed' },
-      { date: '24 Jul 2026', tripId: 'TRIP-002', role: 'Driver', status: 'Completed' },
-    ]
-  },
-  {
-    id: 'STF-003',
-    name: 'Suresh',
-    phone: '9876543230',
-    role: 'Cleaner',
-    vehicle: '-',
-    dailySalary: 300,
-    status: 'Active',
-    joinDate: '10 Mar 2024',
-    totalTrips: 28,
-    tripsThisMonth: 10,
-    salaryThisMonth: 3000,
-    trips: [
-      { date: '25 Jul 2026', tripId: 'TRIP-001', role: 'Cleaner', status: 'Completed' },
-      { date: '24 Jul 2026', tripId: 'TRIP-002', role: 'Cleaner', status: 'Completed' },
-      { date: '23 Jul 2026', tripId: 'TRIP-003', role: 'Cleaner', status: 'Completed' },
-    ]
-  },
-  {
-    id: 'STF-004',
-    name: 'Ravi',
-    phone: '9876543231',
-    role: 'Cleaner',
-    vehicle: '-',
-    dailySalary: 300,
-    status: 'Active',
-    joinDate: '05 Apr 2024',
-    totalTrips: 20,
-    tripsThisMonth: 5,
-    salaryThisMonth: 1500,
-    trips: [
-      { date: '25 Jul 2026', tripId: 'TRIP-001', role: 'Cleaner', status: 'Completed' },
-    ]
-  },
-  {
-    id: 'STF-005',
-    name: 'Ganesh Rao',
-    phone: '9876543222',
-    role: 'Driver',
-    vehicle: 'KA-01-EF-9012',
-    dailySalary: 500,
-    status: 'On Leave',
-    joinDate: '10 Jun 2024',
-    totalTrips: 12,
-    tripsThisMonth: 0,
-    salaryThisMonth: 0,
-    trips: []
-  },
-];
+import { staffService } from '../../services/staffService';
 
 const Staff = () => {
-  const [staff, setStaff] = useState(mockStaff);
+  const [staff, setStaff] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRole, setSelectedRole] = useState('all');
   const [selectedStaff, setSelectedStaff] = useState(null);
@@ -126,9 +42,52 @@ const Staff = () => {
     phone: '',
     role: 'Driver',
     dailySalary: '',
-    status: 'Active',
+    status: 'active',
   });
   const [formErrors, setFormErrors] = useState({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Load staff data from database
+  useEffect(() => {
+    loadStaff();
+  }, []);
+
+  const loadStaff = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await staffService.getAllStaff();
+      if (response.success) {
+        // Format staff data to match frontend structure
+        const formattedStaff = response.data.map(staff => ({
+          id: staff.id,
+          name: staff.name,
+          phone: staff.phone,
+          role: staff.role.charAt(0).toUpperCase() + staff.role.slice(1),
+          vehicle: '-',
+          dailySalary: parseFloat(staff.dailySalary),
+          status: staff.status.charAt(0).toUpperCase() + staff.status.slice(1),
+          joinDate: staff.joinDate ? new Date(staff.joinDate).toLocaleDateString('en-IN', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric'
+          }) : 'N/A',
+          totalTrips: 0,
+          tripsThisMonth: 0,
+          salaryThisMonth: 0,
+          trips: []
+        }));
+        setStaff(formattedStaff);
+      } else {
+        setError('Failed to load staff members');
+      }
+    } catch (error) {
+      console.error('Error loading staff:', error);
+      setError(error.message || 'Error loading staff members');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Filter staff
   const filteredStaff = staff.filter(s => {
@@ -168,63 +127,108 @@ const Staff = () => {
   };
 
   // Handle add staff
-  const handleAddStaff = () => {
+  const handleAddStaff = async () => {
     if (!validateForm()) return;
-
-    const newStaff = {
-      id: `STF-${String(staff.length + 1).padStart(3, '0')}`,
-      name: formData.name,
-      phone: formData.phone,
-      role: formData.role,
-      vehicle: formData.role === 'Driver' ? '-' : '-',
-      dailySalary: parseFloat(formData.dailySalary),
-      status: formData.status,
-      joinDate: new Date().toLocaleDateString('en-IN', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric'
-      }),
-      totalTrips: 0,
-      tripsThisMonth: 0,
-      salaryThisMonth: 0,
-      trips: [],
-    };
-
-    setStaff([...staff, newStaff]);
-    setIsAddModalOpen(false);
-    resetForm();
-    alert('Staff member added successfully!');
+    
+    setIsSubmitting(true);
+    try {
+      const staffData = {
+        name: formData.name.trim(),
+        phone: formData.phone.trim(),
+        role: formData.role.toLowerCase(),
+        dailySalary: parseFloat(formData.dailySalary),
+        status: formData.status
+      };
+      
+      const response = await staffService.addStaff(staffData);
+      
+      if (response.success) {
+        await loadStaff(); // Refresh the list
+        setIsAddModalOpen(false);
+        resetForm();
+        alert('Staff member added successfully!');
+      } else {
+        alert(response.message || 'Failed to add staff member');
+      }
+    } catch (error) {
+      console.error('Error adding staff:', error);
+      alert(error.message || 'Error adding staff member');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // Handle edit staff
-  const handleEditStaff = () => {
+  const handleEditStaff = async () => {
     if (!validateForm()) return;
-
-    const updatedStaff = staff.map(s =>
-      s.id === selectedStaff.id
-        ? {
-            ...s,
-            name: formData.name,
-            phone: formData.phone,
-            role: formData.role,
-            dailySalary: parseFloat(formData.dailySalary),
-            status: formData.status,
-          }
-        : s
-    );
-
-    setStaff(updatedStaff);
-    setIsEditModalOpen(false);
-    resetForm();
-    alert('Staff member updated successfully!');
+    
+    setIsSubmitting(true);
+    try {
+      const staffData = {
+        name: formData.name.trim(),
+        phone: formData.phone.trim(),
+        role: formData.role.toLowerCase(),
+        dailySalary: parseFloat(formData.dailySalary),
+        status: formData.status
+      };
+      
+      const response = await staffService.updateStaff(selectedStaff.id, staffData);
+      
+      if (response.success) {
+        await loadStaff(); // Refresh the list
+        setIsEditModalOpen(false);
+        resetForm();
+        alert('Staff member updated successfully!');
+      } else {
+        alert(response.message || 'Failed to update staff member');
+      }
+    } catch (error) {
+      console.error('Error updating staff:', error);
+      alert(error.message || 'Error updating staff member');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // Handle delete staff
-  const handleDeleteStaff = () => {
-    const updatedStaff = staff.filter(s => s.id !== selectedStaff.id);
-    setStaff(updatedStaff);
-    setIsDeleteModalOpen(false);
-    alert('Staff member removed successfully!');
+  const handleDeleteStaff = async () => {
+    setIsSubmitting(true);
+    try {
+      const response = await staffService.deleteStaff(selectedStaff.id);
+      
+      if (response.success) {
+        await loadStaff(); // Refresh the list
+        setIsDeleteModalOpen(false);
+        resetForm();
+        alert('Staff member removed successfully!');
+      } else {
+        alert(response.message || 'Failed to delete staff member');
+      }
+    } catch (error) {
+      console.error('Error deleting staff:', error);
+      alert(error.message || 'Error deleting staff member');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Toggle staff status
+  const toggleStatus = async (staffId) => {
+    try {
+      const staffMember = staff.find(s => s.id === staffId);
+      const newStatus = staffMember.status === 'Active' ? 'inactive' : 'active';
+      
+      const response = await staffService.toggleStatus(staffId, newStatus);
+      
+      if (response.success) {
+        await loadStaff(); // Refresh the list
+      } else {
+        alert('Failed to update staff status');
+      }
+    } catch (error) {
+      console.error('Error toggling status:', error);
+      alert('Error updating staff status');
+    }
   };
 
   // Reset form
@@ -234,7 +238,7 @@ const Staff = () => {
       phone: '',
       role: 'Driver',
       dailySalary: '',
-      status: 'Active',
+      status: 'active',
     });
     setFormErrors({});
     setSelectedStaff(null);
@@ -248,7 +252,7 @@ const Staff = () => {
       phone: staffMember.phone,
       role: staffMember.role,
       dailySalary: staffMember.dailySalary.toString(),
-      status: staffMember.status,
+      status: staffMember.status.toLowerCase(),
     });
     setIsEditModalOpen(true);
   };
@@ -265,16 +269,6 @@ const Staff = () => {
     setIsViewModalOpen(true);
   };
 
-  // Toggle staff status
-  const toggleStatus = (staffId) => {
-    const updatedStaff = staff.map(s =>
-      s.id === staffId
-        ? { ...s, status: s.status === 'Active' ? 'Inactive' : 'Active' }
-        : s
-    );
-    setStaff(updatedStaff);
-  };
-
   // Format currency
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-IN', {
@@ -284,6 +278,18 @@ const Staff = () => {
       maximumFractionDigits: 0,
     }).format(amount);
   };
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <FiLoader className="w-12 h-12 animate-spin text-[#16834B] mx-auto mb-4" />
+          <p className="text-[#6B716D]">Loading staff members...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -387,7 +393,7 @@ const Staff = () => {
                 {staffMember.role === 'Driver' && (
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-[#6B716D]">Vehicle</span>
-                    <span className="font-medium text-[#151A17]">{staffMember.vehicle}</span>
+                    <span className="font-medium text-[#151A17]">{staffMember.vehicle || 'Not assigned'}</span>
                   </div>
                 )}
                 <div className="flex items-center justify-between text-sm">
@@ -395,12 +401,8 @@ const Staff = () => {
                   <span className="font-medium text-[#151A17]">{formatCurrency(staffMember.dailySalary)}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-[#6B716D]">Trips This Month</span>
-                  <span className="font-medium text-[#151A17]">{staffMember.tripsThisMonth}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-[#6B716D]">Salary This Month</span>
-                  <span className="font-medium text-[#16834B]">{formatCurrency(staffMember.salaryThisMonth)}</span>
+                  <span className="text-[#6B716D]">Join Date</span>
+                  <span className="font-medium text-[#151A17]">{staffMember.joinDate}</span>
                 </div>
               </div>
 
@@ -443,8 +445,10 @@ const Staff = () => {
         </div>
       ) : (
         <EmptyState
-          title="No staff found"
-          description="Try adjusting your search or filter criteria."
+          title={staff.length === 0 ? "No staff members added yet" : "No staff found"}
+          description={staff.length === 0 
+            ? "Start by adding your first staff member." 
+            : "Try adjusting your search or filter criteria."}
           icon={FiUsers}
           action={
             <Button onClick={() => {
@@ -475,12 +479,22 @@ const Staff = () => {
                 setIsAddModalOpen(false);
                 resetForm();
               }}
+              disabled={isSubmitting}
             >
               Cancel
             </Button>
-            <Button onClick={handleAddStaff}>
-              <FiPlus className="w-4 h-4 mr-2" />
-              Add Staff
+            <Button onClick={handleAddStaff} disabled={isSubmitting}>
+              {isSubmitting ? (
+                <>
+                  <FiLoader className="w-4 h-4 mr-2 animate-spin" />
+                  Adding...
+                </>
+              ) : (
+                <>
+                  <FiPlus className="w-4 h-4 mr-2" />
+                  Add Staff
+                </>
+              )}
             </Button>
           </>
         }
@@ -575,9 +589,9 @@ const Staff = () => {
               onChange={handleInputChange}
               className="w-full px-4 py-2.5 border border-[#E5E8E6] rounded-lg focus:ring-2 focus:ring-[#111714] focus:border-transparent outline-none transition"
             >
-              <option value="Active">Active</option>
-              <option value="Inactive">Inactive</option>
-              <option value="On Leave">On Leave</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+              <option value="on_leave">On Leave</option>
             </select>
           </div>
         </div>
@@ -600,12 +614,22 @@ const Staff = () => {
                 setIsEditModalOpen(false);
                 resetForm();
               }}
+              disabled={isSubmitting}
             >
               Cancel
             </Button>
-            <Button onClick={handleEditStaff}>
-              <FiEdit2 className="w-4 h-4 mr-2" />
-              Update Staff
+            <Button onClick={handleEditStaff} disabled={isSubmitting}>
+              {isSubmitting ? (
+                <>
+                  <FiLoader className="w-4 h-4 mr-2 animate-spin" />
+                  Updating...
+                </>
+              ) : (
+                <>
+                  <FiEdit2 className="w-4 h-4 mr-2" />
+                  Update Staff
+                </>
+              )}
             </Button>
           </>
         }
@@ -697,9 +721,9 @@ const Staff = () => {
               onChange={handleInputChange}
               className="w-full px-4 py-2.5 border border-[#E5E8E6] rounded-lg focus:ring-2 focus:ring-[#111714] focus:border-transparent outline-none transition"
             >
-              <option value="Active">Active</option>
-              <option value="Inactive">Inactive</option>
-              <option value="On Leave">On Leave</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+              <option value="on_leave">On Leave</option>
             </select>
           </div>
         </div>
@@ -722,12 +746,22 @@ const Staff = () => {
                 setIsDeleteModalOpen(false);
                 resetForm();
               }}
+              disabled={isSubmitting}
             >
               Cancel
             </Button>
-            <Button variant="danger" onClick={handleDeleteStaff}>
-              <FiTrash2 className="w-4 h-4 mr-2" />
-              Remove Staff
+            <Button variant="danger" onClick={handleDeleteStaff} disabled={isSubmitting}>
+              {isSubmitting ? (
+                <>
+                  <FiLoader className="w-4 h-4 mr-2 animate-spin" />
+                  Removing...
+                </>
+              ) : (
+                <>
+                  <FiTrash2 className="w-4 h-4 mr-2" />
+                  Remove Staff
+                </>
+              )}
             </Button>
           </>
         }
@@ -784,7 +818,7 @@ const Staff = () => {
             {/* Trip History */}
             <div>
               <h4 className="font-medium text-[#151A17] mb-3">Trip History</h4>
-              {selectedStaff.trips.length > 0 ? (
+              {selectedStaff.trips && selectedStaff.trips.length > 0 ? (
                 <div className="border border-[#E5E8E6] rounded-lg overflow-hidden">
                   <table className="w-full">
                     <thead className="bg-[#F6F7F6]">

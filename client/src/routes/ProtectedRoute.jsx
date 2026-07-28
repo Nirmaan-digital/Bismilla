@@ -4,6 +4,12 @@ import { useAuth } from '../context/AuthContext';
 const ProtectedRoute = ({ allowedRoles }) => {
   const { user, isAuthenticated, loading } = useAuth();
 
+  console.log('🔒 ProtectedRoute - Checking access...');
+  console.log('🔒 isAuthenticated:', isAuthenticated);
+  console.log('🔒 user:', user);
+  console.log('🔒 loading:', loading);
+  console.log('🔒 allowedRoles:', allowedRoles);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -13,10 +19,12 @@ const ProtectedRoute = ({ allowedRoles }) => {
   }
 
   if (!isAuthenticated) {
+    console.log('🔒 Not authenticated, redirecting to login');
     return <Navigate to="/login" replace />;
   }
 
-  if (allowedRoles && !allowedRoles.includes(user?.role)) {
+  if (allowedRoles && allowedRoles.length > 0 && !allowedRoles.includes(user?.role)) {
+    console.log(`🔒 Role ${user?.role} not allowed. Redirecting...`);
     // Redirect to appropriate dashboard based on role
     if (user?.role === 'admin') return <Navigate to="/admin/dashboard" replace />;
     if (user?.role === 'retailer') return <Navigate to="/retailer/dashboard" replace />;
@@ -24,6 +32,7 @@ const ProtectedRoute = ({ allowedRoles }) => {
     return <Navigate to="/login" replace />;
   }
 
+  console.log('✅ Access granted! Rendering outlet.');
   return <Outlet />;
 };
 
