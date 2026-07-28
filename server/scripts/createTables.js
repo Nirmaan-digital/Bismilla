@@ -20,13 +20,16 @@ const createTables = async () => {
       CREATE TABLE IF NOT EXISTS users (
         id INT PRIMARY KEY AUTO_INCREMENT,
         name VARCHAR(100) NOT NULL,
+        email VARCHAR(100) UNIQUE,
         phone VARCHAR(15) UNIQUE NOT NULL,
         password VARCHAR(255) NOT NULL,
         role ENUM('admin', 'retailer', 'driver') NOT NULL,
         status ENUM('active', 'inactive') DEFAULT 'active',
+        last_login TIMESTAMP NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         INDEX idx_phone (phone),
+        INDEX idx_email (email),
         INDEX idx_role (role)
       )
     `);
@@ -108,6 +111,26 @@ const createTables = async () => {
       )
     `);
     console.log('✅ Drivers table created');
+
+    // Vehicles Table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS vehicles (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        vehicle_id VARCHAR(20) UNIQUE,
+        name VARCHAR(100) NOT NULL,
+        number VARCHAR(30) UNIQUE NOT NULL,
+        type VARCHAR(100) NOT NULL,
+        capacity INT NOT NULL,
+        fuel_type ENUM('Diesel', 'Petrol', 'CNG', 'Electric') DEFAULT 'Diesel',
+        status ENUM('Active', 'Inactive') DEFAULT 'Active',
+        today_trips INT DEFAULT 0,
+        total_trips INT DEFAULT 0,
+        last_maintenance DATE NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      )
+    `);
+    console.log('✅ Vehicles table created');
 
     // Orders Table
     await pool.query(`

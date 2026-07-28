@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   FiUsers, 
   FiPlus, 
@@ -14,101 +14,20 @@ import {
   FiClock,
   FiMoreVertical,
   FiKey,
-  FiUser
+  FiUser,
+  FiLoader
 } from 'react-icons/fi';
 import Button from '../../components/common/Button';
 import Badge from '../../components/common/Badge';
 import SearchInput from '../../components/common/SearchInput';
 import Modal from '../../components/common/Modal';
 import EmptyState from '../../components/common/EmptyState';
-import { formatDate } from '../../data/mockData';
-
-// Mock user data
-const mockUsers = [
-  {
-    id: 'USR-001',
-    name: 'Mohammed Admin',
-    email: 'admin@bismillah.com',
-    phone: '9999999999',
-    role: 'admin',
-    status: 'Active',
-    lastLogin: '25 Jul 2026, 10:30 AM',
-    createdAt: '01 Jan 2024',
-  },
-  {
-    id: 'USR-002',
-    name: 'Ahmed Khan',
-    email: 'ahmed@almadina.com',
-    phone: '9876543210',
-    role: 'retailer',
-    status: 'Active',
-    lastLogin: '25 Jul 2026, 09:15 AM',
-    createdAt: '15 Jan 2024',
-  },
-  {
-    id: 'USR-003',
-    name: 'Suresh Reddy',
-    email: 'suresh@hyderabadpoultry.com',
-    phone: '9876543211',
-    role: 'retailer',
-    status: 'Active',
-    lastLogin: '24 Jul 2026, 04:20 PM',
-    createdAt: '22 Mar 2024',
-  },
-  {
-    id: 'USR-004',
-    name: 'Priya Patel',
-    email: 'priya@citychicken.com',
-    phone: '9876543212',
-    role: 'retailer',
-    status: 'Active',
-    lastLogin: '24 Jul 2026, 02:10 PM',
-    createdAt: '10 Jun 2024',
-  },
-  {
-    id: 'USR-005',
-    name: 'Ravi Kumar',
-    email: 'ravi@freshmeat.com',
-    phone: '9876543213',
-    role: 'retailer',
-    status: 'Inactive',
-    lastLogin: '20 Jul 2026, 11:00 AM',
-    createdAt: '05 Sep 2024',
-  },
-  {
-    id: 'USR-006',
-    name: 'Sameer Khan',
-    email: 'sameer@delivery.com',
-    phone: '9876543220',
-    role: 'driver',
-    status: 'Active',
-    lastLogin: '25 Jul 2026, 08:45 AM',
-    createdAt: '01 Jan 2024',
-  },
-  {
-    id: 'USR-007',
-    name: 'Rahul Singh',
-    email: 'rahul@delivery.com',
-    phone: '9876543221',
-    role: 'driver',
-    status: 'Active',
-    lastLogin: '24 Jul 2026, 06:30 PM',
-    createdAt: '15 Feb 2024',
-  },
-  {
-    id: 'USR-008',
-    name: 'Venkatesh Rao',
-    email: 'venkatesh@delivery.com',
-    phone: '9876543222',
-    role: 'driver',
-    status: 'Inactive',
-    lastLogin: '10 Jul 2026, 12:00 PM',
-    createdAt: '10 Mar 2024',
-  },
-];
+import { userService } from '../../services/userService';
 
 const Users = () => {
-  const [users, setUsers] = useState(mockUsers);
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRole, setSelectedRole] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
@@ -125,11 +44,46 @@ const Users = () => {
     confirmPassword: '',
   });
   const [formErrors, setFormErrors] = useState({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Load users from database
+  useEffect(() => {
+    loadUsers();
+  }, []);
+
+  const loadUsers = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await userService.getAllUsers();
+      if (response.success) {
+        // Format user data to match frontend structure
+        const formattedUsers = response.data.map(user => ({
+          id: user.id,
+          name: user.name,
+          email: user.email || 'N/A',
+          phone: user.phone,
+          role: user.role,
+          status: user.status.charAt(0).toUpperCase() + user.status.slice(1),
+          lastLogin: user.lastLogin ? new Date(user.lastLogin).toLocaleString() : 'Never',
+          createdAt: user.createdAt || 'N/A'
+        }));
+        setUsers(formattedUsers);
+      } else {
+        setError('Failed to load users');
+      }
+    } catch (error) {
+      console.error('Error loading users:', error);
+      setError(error.message || 'Error loading users');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Filter users based on search and filters
   const filteredUsers = users.filter(user => {
     const matchesSearch = user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          (user.email && user.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
                           user.phone.includes(searchTerm);
     const matchesRole = selectedRole === 'all' || user.role === selectedRole;
     const matchesStatus = selectedStatus === 'all' || user.status === selectedStatus;
@@ -160,7 +114,6 @@ const Users = () => {
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
-    // Clear error for this field
     if (formErrors[name]) {
       setFormErrors({ ...formErrors, [name]: '' });
     }
@@ -186,65 +139,107 @@ const Users = () => {
   };
 
   // Handle create user
-  const handleCreateUser = () => {
+  const handleCreateUser = async () => {
     if (!validateForm()) return;
-
-    const newUser = {
-      id: `USR-${String(users.length + 1).padStart(3, '0')}`,
-      name: formData.name,
-      email: formData.email,
-      phone: formData.phone,
-      role: formData.role,
-      status: 'Active',
-      lastLogin: 'Never',
-      createdAt: formatDate(new Date()),
-    };
-
-    setUsers([...users, newUser]);
-    setIsCreateModalOpen(false);
-    resetForm();
-    // Show success toast (you can add react-hot-toast here)
-    alert('User created successfully!');
+    
+    setIsSubmitting(true);
+    try {
+      const userData = {
+        name: formData.name.trim(),
+        email: formData.email.trim(),
+        phone: formData.phone.trim(),
+        role: formData.role,
+        password: formData.password
+      };
+      
+      const response = await userService.createUser(userData);
+      
+      if (response.success) {
+        await loadUsers();
+        setIsCreateModalOpen(false);
+        resetForm();
+        alert('User created successfully! Login credentials have been sent to the user.');
+      } else {
+        alert(response.message || 'Failed to create user');
+      }
+    } catch (error) {
+      console.error('Error creating user:', error);
+      alert(error.message || 'Error creating user');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // Handle edit user
-  const handleEditUser = () => {
+  const handleEditUser = async () => {
     if (!validateForm()) return;
-
-    const updatedUsers = users.map(user => 
-      user.id === selectedUser.id 
-        ? { 
-            ...user, 
-            name: formData.name,
-            email: formData.email,
-            phone: formData.phone,
-            role: formData.role,
-          }
-        : user
-    );
-
-    setUsers(updatedUsers);
-    setIsEditModalOpen(false);
-    resetForm();
-    alert('User updated successfully!');
+    
+    setIsSubmitting(true);
+    try {
+      const userData = {
+        name: formData.name.trim(),
+        email: formData.email.trim(),
+        phone: formData.phone.trim(),
+        role: formData.role,
+        status: formData.status
+      };
+      
+      const response = await userService.updateUser(selectedUser.id, userData);
+      
+      if (response.success) {
+        await loadUsers();
+        setIsEditModalOpen(false);
+        resetForm();
+        alert('User updated successfully!');
+      } else {
+        alert(response.message || 'Failed to update user');
+      }
+    } catch (error) {
+      console.error('Error updating user:', error);
+      alert(error.message || 'Error updating user');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // Handle delete user
-  const handleDeleteUser = () => {
-    const updatedUsers = users.filter(user => user.id !== selectedUser.id);
-    setUsers(updatedUsers);
-    setIsDeleteModalOpen(false);
-    alert('User deleted successfully!');
+  const handleDeleteUser = async () => {
+    setIsSubmitting(true);
+    try {
+      const response = await userService.deleteUser(selectedUser.id);
+      
+      if (response.success) {
+        await loadUsers();
+        setIsDeleteModalOpen(false);
+        resetForm();
+        alert('User deleted successfully!');
+      } else {
+        alert(response.message || 'Failed to delete user');
+      }
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      alert(error.message || 'Error deleting user');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // Handle toggle user status
-  const handleToggleStatus = (user) => {
-    const updatedUsers = users.map(u => 
-      u.id === user.id 
-        ? { ...u, status: u.status === 'Active' ? 'Inactive' : 'Active' }
-        : u
-    );
-    setUsers(updatedUsers);
+  const handleToggleStatus = async (user) => {
+    try {
+      const newStatus = user.status === 'Active' ? 'inactive' : 'active';
+      
+      const response = await userService.toggleStatus(user.id, newStatus);
+      
+      if (response.success) {
+        await loadUsers();
+      } else {
+        alert(response.message || 'Failed to update user status');
+      }
+    } catch (error) {
+      console.error('Error toggling status:', error);
+      alert(error.message || 'Error updating user status');
+    }
   };
 
   // Reset form
@@ -256,6 +251,7 @@ const Users = () => {
       role: 'retailer',
       password: '',
       confirmPassword: '',
+      status: 'active'
     });
     setFormErrors({});
     setSelectedUser(null);
@@ -271,6 +267,7 @@ const Users = () => {
       role: user.role,
       password: '',
       confirmPassword: '',
+      status: user.status.toLowerCase(),
     });
     setIsEditModalOpen(true);
   };
@@ -287,6 +284,18 @@ const Users = () => {
     { value: 'retailer', label: 'Retailer' },
     { value: 'driver', label: 'Driver' },
   ];
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <FiLoader className="w-12 h-12 animate-spin text-[#16834B] mx-auto mb-4" />
+          <p className="text-[#6B716D]">Loading users...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -438,7 +447,7 @@ const Users = () => {
                         {user.role !== 'admin' && (
                           <button
                             onClick={() => openDeleteModal(user)}
-                            className="p-2 hover:bg-gray-100 rounded-lg transition"
+                            className="p-2 hover:bg-red-50 rounded-lg transition"
                             title="Delete User"
                           >
                             <FiTrash2 className="w-4 h-4 text-[#D14343]" />
@@ -454,7 +463,7 @@ const Users = () => {
         ) : (
           <EmptyState
             title="No users found"
-            description="Try adjusting your search or filter criteria."
+            description={users.length === 0 ? "Start by creating your first user." : "Try adjusting your search or filter criteria."}
             icon={FiUsers}
             action={
               <Button onClick={() => {
@@ -485,11 +494,19 @@ const Users = () => {
                 setIsCreateModalOpen(false);
                 resetForm();
               }}
+              disabled={isSubmitting}
             >
               Cancel
             </Button>
-            <Button onClick={handleCreateUser}>
-              Create User
+            <Button onClick={handleCreateUser} disabled={isSubmitting}>
+              {isSubmitting ? (
+                <>
+                  <FiLoader className="w-4 h-4 mr-2 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                'Create User'
+              )}
             </Button>
           </>
         }
@@ -637,11 +654,19 @@ const Users = () => {
                 setIsEditModalOpen(false);
                 resetForm();
               }}
+              disabled={isSubmitting}
             >
               Cancel
             </Button>
-            <Button onClick={handleEditUser}>
-              Update User
+            <Button onClick={handleEditUser} disabled={isSubmitting}>
+              {isSubmitting ? (
+                <>
+                  <FiLoader className="w-4 h-4 mr-2 animate-spin" />
+                  Updating...
+                </>
+              ) : (
+                'Update User'
+              )}
             </Button>
           </>
         }
@@ -729,6 +754,21 @@ const Users = () => {
             )}
           </div>
 
+          <div>
+            <label className="block text-sm font-medium text-[#151A17] mb-1.5">
+              Status
+            </label>
+            <select
+              name="status"
+              value={formData.status}
+              onChange={handleInputChange}
+              className="w-full px-4 py-2.5 border border-[#E5E8E6] rounded-lg focus:ring-2 focus:ring-[#111714] focus:border-transparent outline-none transition"
+            >
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+          </div>
+
           <div className="p-4 bg-[#F6F7F6] rounded-lg">
             <p className="text-sm text-[#6B716D]">
               <FiKey className="inline w-4 h-4 mr-2" />
@@ -755,11 +795,19 @@ const Users = () => {
                 setIsDeleteModalOpen(false);
                 resetForm();
               }}
+              disabled={isSubmitting}
             >
               Cancel
             </Button>
-            <Button variant="danger" onClick={handleDeleteUser}>
-              Delete User
+            <Button variant="danger" onClick={handleDeleteUser} disabled={isSubmitting}>
+              {isSubmitting ? (
+                <>
+                  <FiLoader className="w-4 h-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                'Delete User'
+              )}
             </Button>
           </>
         }

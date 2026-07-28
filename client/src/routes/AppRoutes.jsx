@@ -57,7 +57,6 @@ const AppRoutes = () => {
         {/* Admin Routes */}
         <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
           <Route element={<DashboardLayout />}>
-            {/* Main Admin Pages */}
             <Route path="/admin/dashboard" element={<AdminDashboard />} />
             <Route path="/admin/pricing" element={<Pricing />} />
             <Route path="/admin/customers" element={<Customers />} />
@@ -71,8 +70,6 @@ const AppRoutes = () => {
             <Route path="/admin/staff" element={<Staff />} />
             <Route path="/admin/cash-verification" element={<CashVerification />} />
             <Route path="/admin/settings" element={<Settings />} />
-            
-            {/* Additional Admin Pages - Coming Soon */}
             <Route path="/admin/orders/:id" element={<ComingSoon />} />
             <Route path="/admin/retailers" element={<ComingSoon />} />
             <Route path="/admin/drivers" element={<ComingSoon />} />

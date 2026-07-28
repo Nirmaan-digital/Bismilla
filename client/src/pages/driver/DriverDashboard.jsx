@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 import { 
   FiTruck, 
   FiPackage, 
@@ -10,12 +11,14 @@ import {
   FiPhone,
   FiArrowRight,
   FiCheckCircle,
-  FiAlertCircle
+  FiAlertCircle,
+  FiLoader,
+  FiLogOut
 } from 'react-icons/fi';
 import Button from '../../components/common/Button';
 import Badge from '../../components/common/Badge';
 
-// Mock data - will come from API
+// Mock data for now - will be replaced with API
 const mockTrips = [
   {
     id: 'TRIP-001',
@@ -44,22 +47,34 @@ const mockTrips = [
     ],
     totalKg: 370,
     totalOrders: 2,
-    status: 'assigned', // assigned, in_progress, completed
+    status: 'assigned',
   },
 ];
 
 const DriverDashboard = () => {
-  const [trips] = useState(mockTrips);
+  const navigate = useNavigate();
+  const { user, logout } = useAuth();
+
+  const [loading, setLoading] = useState(false);
+  const [trips, setTrips] = useState(mockTrips);
   const [activeTrip, setActiveTrip] = useState(null);
   const [isTripStarted, setIsTripStarted] = useState(false);
   const [tripData, setTripData] = useState({
     totalHens: '',
     dieselAmount: '',
     dieselPhoto: null,
+    dieselPhotoPreview: null,
     orders: [],
   });
 
-  const currentTrip = trips[0];
+  // Log user data on mount
+  useEffect(() => {
+    console.log('👤 Current user:', user);
+    console.log('📦 User from localStorage:', localStorage.getItem('user'));
+    console.log('🔑 Token from localStorage:', localStorage.getItem('token') ? 'Exists' : 'None');
+  }, [user]);
+
+  const currentTrip = trips.length > 0 ? trips[0] : null;
   const totalOrders = currentTrip?.orders?.length || 0;
   const totalKg = currentTrip?.totalKg || 0;
 
@@ -76,7 +91,6 @@ const DriverDashboard = () => {
   const handleStartTrip = () => {
     setIsTripStarted(true);
     setActiveTrip(currentTrip);
-    // Initialize orders with actual delivered kg = ordered kg
     setTripData({
       ...tripData,
       orders: currentTrip.orders.map(order => ({
@@ -88,17 +102,22 @@ const DriverDashboard = () => {
     });
   };
 
-  const handleCompleteTrip = () => {
-    // Here you would save the trip data to backend
-    alert('Trip completed successfully!');
-    setIsTripStarted(false);
-    setActiveTrip(null);
-    setTripData({
-      totalHens: '',
-      dieselAmount: '',
-      dieselPhoto: null,
-      orders: [],
-    });
+  const handleCompleteTrip = async () => {
+    try {
+      alert('Trip completed successfully!');
+      setIsTripStarted(false);
+      setActiveTrip(null);
+      setTripData({
+        totalHens: '',
+        dieselAmount: '',
+        dieselPhoto: null,
+        dieselPhotoPreview: null,
+        orders: [],
+      });
+    } catch (error) {
+      console.error('Error completing trip:', error);
+      alert('Error completing trip. Please try again.');
+    }
   };
 
   const handleOrderDelivered = (orderId) => {
@@ -107,7 +126,6 @@ const DriverDashboard = () => {
     );
     setTripData({ ...tripData, orders: updatedOrders });
 
-    // Check if all orders are delivered
     const allDelivered = updatedOrders.every(order => order.delivered);
     if (allDelivered) {
       alert('All orders delivered! You can now complete the trip.');
@@ -142,6 +160,14 @@ const DriverDashboard = () => {
 
   const totalKgFromHens = tripData.totalHens ? parseFloat(tripData.totalHens) * 0.5 : 0;
 
+  // Get greeting based on time
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
+  };
+
   // If trip is started, show the trip details view
   if (isTripStarted && activeTrip) {
     const allDelivered = tripData.orders.every(order => order.delivered);
@@ -165,7 +191,7 @@ const DriverDashboard = () => {
               <div className="w-48 h-2 bg-gray-200 rounded-full overflow-hidden">
                 <div 
                   className="h-full bg-[#16834B] transition-all duration-500"
-                  style={{ width: `${(getDeliveredCount() / totalOrders) * 100}%` }}
+                  style={{ width: `${totalOrders > 0 ? (getDeliveredCount() / totalOrders) * 100 : 0}%` }}
                 />
               </div>
               <span className="text-sm font-medium text-[#151A17]">
@@ -173,7 +199,7 @@ const DriverDashboard = () => {
               </span>
             </div>
             <span className="text-sm text-[#6B716D]">
-              {Math.round((getDeliveredCount() / totalOrders) * 100)}%
+              {totalOrders > 0 ? Math.round((getDeliveredCount() / totalOrders) * 100) : 0}%
             </span>
           </div>
         </div>
@@ -228,15 +254,23 @@ const DriverDashboard = () => {
                   id="diesel-photo"
                   onChange={(e) => {
                     if (e.target.files[0]) {
-                      setTripData({ ...tripData, dieselPhoto: e.target.files[0] });
+                      setTripData({ 
+                        ...tripData, 
+                        dieselPhoto: e.target.files[0],
+                        dieselPhotoPreview: URL.createObjectURL(e.target.files[0])
+                      });
                     }
                   }}
                 />
                 <label htmlFor="diesel-photo" className="cursor-pointer">
-                  {tripData.dieselPhoto ? (
+                  {tripData.dieselPhotoPreview ? (
                     <div>
-                      <FiCheckCircle className="w-8 h-8 mx-auto text-[#16834B]" />
-                      <p className="text-sm text-[#16834B] mt-1">Photo uploaded</p>
+                      <img 
+                        src={tripData.dieselPhotoPreview} 
+                        alt="Diesel" 
+                        className="w-32 h-32 object-cover mx-auto rounded-lg"
+                      />
+                      <p className="text-sm text-[#16834B] mt-2">Photo uploaded</p>
                     </div>
                   ) : (
                     <div>
@@ -409,11 +443,25 @@ const DriverDashboard = () => {
   return (
     <div className="max-w-4xl mx-auto">
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-[#151A17]">
-          Good morning, Sameer 👋
-        </h1>
-        <p className="text-sm text-[#6B716D] mt-1">Your assigned trips for today</p>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-semibold text-[#151A17]">
+            {getGreeting()}, {user?.name || 'Driver'} 👋
+          </h1>
+          <p className="text-sm text-[#6B716D] mt-1">
+            {trips.length > 0 ? 'Your assigned trips for today' : 'No trips assigned for today'}
+          </p>
+        </div>
+        <button
+          onClick={() => {
+            logout();
+            navigate('/login');
+          }}
+          className="flex items-center gap-2 px-4 py-2 text-sm text-[#6B716D] hover:text-[#D14343] transition"
+        >
+          <FiLogOut className="w-4 h-4" />
+          Logout
+        </button>
       </div>
 
       {/* Stats */}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   FiTruck, 
   FiPlus, 
@@ -9,56 +9,20 @@ import {
   FiPackage,
   FiCalendar,
   FiTrendingUp,
-  FiUsers
+  FiUsers,
+  FiLoader
 } from 'react-icons/fi';
 import Button from '../../components/common/Button';
 import Badge from '../../components/common/Badge';
 import Modal from '../../components/common/Modal';
 import SearchInput from '../../components/common/SearchInput';
 import EmptyState from '../../components/common/EmptyState';
-
-// Mock vehicles data
-const mockVehicles = [
-  {
-    id: 'VEH-001',
-    name: 'Tata Ace 1',
-    number: 'KA-01-AB-1234',
-    type: 'Tata Ace',
-    capacity: 800,
-    status: 'Active',
-    todayTrips: 2,
-    totalTrips: 45,
-    lastMaintenance: '15 Jul 2026',
-    fuelType: 'Diesel',
-  },
-  {
-    id: 'VEH-002',
-    name: 'Mahindra Bolero',
-    number: 'KA-01-CD-5678',
-    type: 'Mahindra Bolero',
-    capacity: 1200,
-    status: 'Active',
-    todayTrips: 3,
-    totalTrips: 78,
-    lastMaintenance: '20 Jul 2026',
-    fuelType: 'Diesel',
-  },
-  {
-    id: 'VEH-003',
-    name: 'Ashok Leyland Dost',
-    number: 'KA-01-EF-9012',
-    type: 'Ashok Leyland Dost',
-    capacity: 1500,
-    status: 'Active',
-    todayTrips: 1,
-    totalTrips: 32,
-    lastMaintenance: '10 Jul 2026',
-    fuelType: 'Diesel',
-  },
-];
+import { vehicleService } from '../../services/vehicleService';
 
 const Vehicles = () => {
-  const [vehicles, setVehicles] = useState(mockVehicles);
+  const [vehicles, setVehicles] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -70,9 +34,46 @@ const Vehicles = () => {
     type: '',
     capacity: '',
     fuelType: 'Diesel',
-    status: 'Active',
+    status: 'active',
   });
   const [formErrors, setFormErrors] = useState({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Load vehicles from database
+  useEffect(() => {
+    loadVehicles();
+  }, []);
+
+  const loadVehicles = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await vehicleService.getAllVehicles();
+      if (response.success) {
+        // Format vehicle data to match frontend structure
+        const formattedVehicles = response.data.map(vehicle => ({
+          id: vehicle.id,
+          name: vehicle.name,
+          number: vehicle.number,
+          type: vehicle.type,
+          capacity: parseFloat(vehicle.capacity),
+          fuelType: vehicle.fuelType || 'Diesel',
+          status: vehicle.status.charAt(0).toUpperCase() + vehicle.status.slice(1),
+          lastMaintenance: vehicle.lastMaintenance || '-',
+          todayTrips: vehicle.todayTrips || 0,
+          totalTrips: vehicle.totalTrips || 0
+        }));
+        setVehicles(formattedVehicles);
+      } else {
+        setError('Failed to load vehicles');
+      }
+    } catch (error) {
+      console.error('Error loading vehicles:', error);
+      setError(error.message || 'Error loading vehicles');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Filter vehicles
   const filteredVehicles = vehicles.filter(v =>
@@ -96,7 +97,7 @@ const Vehicles = () => {
     if (!formData.name.trim()) errors.name = 'Vehicle name is required';
     if (!formData.number.trim()) errors.number = 'Vehicle number is required';
     if (!formData.type.trim()) errors.type = 'Vehicle type is required';
-    if (!formData.capacity || formData.capacity <= 0) {
+    if (!formData.capacity || parseFloat(formData.capacity) <= 0) {
       errors.capacity = 'Valid capacity is required';
     }
     setFormErrors(errors);
@@ -104,58 +105,110 @@ const Vehicles = () => {
   };
 
   // Handle add vehicle
-  const handleAddVehicle = () => {
+  const handleAddVehicle = async () => {
     if (!validateForm()) return;
-
-    const newVehicle = {
-      id: `VEH-${String(vehicles.length + 1).padStart(3, '0')}`,
-      name: formData.name,
-      number: formData.number,
-      type: formData.type,
-      capacity: parseInt(formData.capacity),
-      status: formData.status,
-      todayTrips: 0,
-      totalTrips: 0,
-      lastMaintenance: '-',
-      fuelType: formData.fuelType,
-    };
-
-    setVehicles([...vehicles, newVehicle]);
-    setIsAddModalOpen(false);
-    resetForm();
-    alert('Vehicle added successfully!');
+    
+    setIsSubmitting(true);
+    try {
+      const vehicleData = {
+        name: formData.name.trim(),
+        number: formData.number.trim().toUpperCase(),
+        type: formData.type.trim(),
+        capacity: parseFloat(formData.capacity),
+        fuelType: formData.fuelType,
+        status: formData.status
+      };
+      
+      const response = await vehicleService.addVehicle(vehicleData);
+      
+      if (response.success) {
+        await loadVehicles();
+        setIsAddModalOpen(false);
+        resetForm();
+        alert('Vehicle added successfully!');
+      } else {
+        alert(response.message || 'Failed to add vehicle');
+      }
+    } catch (error) {
+      console.error('Error adding vehicle:', error);
+      alert(error.message || 'Error adding vehicle');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // Handle edit vehicle
-  const handleEditVehicle = () => {
+  const handleEditVehicle = async () => {
     if (!validateForm()) return;
-
-    const updatedVehicles = vehicles.map(v =>
-      v.id === selectedVehicle.id
-        ? {
-            ...v,
-            name: formData.name,
-            number: formData.number,
-            type: formData.type,
-            capacity: parseInt(formData.capacity),
-            status: formData.status,
-            fuelType: formData.fuelType,
-          }
-        : v
-    );
-
-    setVehicles(updatedVehicles);
-    setIsEditModalOpen(false);
-    resetForm();
-    alert('Vehicle updated successfully!');
+    
+    setIsSubmitting(true);
+    try {
+      const vehicleData = {
+        name: formData.name.trim(),
+        number: formData.number.trim().toUpperCase(),
+        type: formData.type.trim(),
+        capacity: parseFloat(formData.capacity),
+        fuelType: formData.fuelType,
+        status: formData.status
+      };
+      
+      const response = await vehicleService.updateVehicle(selectedVehicle.id, vehicleData);
+      
+      if (response.success) {
+        await loadVehicles();
+        setIsEditModalOpen(false);
+        resetForm();
+        alert('Vehicle updated successfully!');
+      } else {
+        alert(response.message || 'Failed to update vehicle');
+      }
+    } catch (error) {
+      console.error('Error updating vehicle:', error);
+      alert(error.message || 'Error updating vehicle');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // Handle delete vehicle
-  const handleDeleteVehicle = () => {
-    const updatedVehicles = vehicles.filter(v => v.id !== selectedVehicle.id);
-    setVehicles(updatedVehicles);
-    setIsDeleteModalOpen(false);
-    alert('Vehicle removed successfully!');
+  const handleDeleteVehicle = async () => {
+    setIsSubmitting(true);
+    try {
+      const response = await vehicleService.deleteVehicle(selectedVehicle.id);
+      
+      if (response.success) {
+        await loadVehicles();
+        setIsDeleteModalOpen(false);
+        resetForm();
+        alert('Vehicle removed successfully!');
+      } else {
+        alert(response.message || 'Failed to delete vehicle');
+      }
+    } catch (error) {
+      console.error('Error deleting vehicle:', error);
+      alert(error.message || 'Error deleting vehicle');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Toggle vehicle status
+  const toggleStatus = async (vehicleId) => {
+    try {
+      const vehicle = vehicles.find(v => v.id === vehicleId);
+      const newStatus = vehicle.status === 'Active' ? 'inactive' : 'active';
+      
+      const response = await vehicleService.toggleStatus(vehicleId, newStatus);
+      
+      if (response.success) {
+        await loadVehicles();
+      } else {
+        alert('Failed to update vehicle status');
+      }
+    } catch (error) {
+      console.error('Error toggling status:', error);
+      alert('Error updating vehicle status');
+    }
   };
 
   // Reset form
@@ -166,7 +219,7 @@ const Vehicles = () => {
       type: '',
       capacity: '',
       fuelType: 'Diesel',
-      status: 'Active',
+      status: 'active',
     });
     setFormErrors({});
     setSelectedVehicle(null);
@@ -181,7 +234,7 @@ const Vehicles = () => {
       type: vehicle.type,
       capacity: vehicle.capacity.toString(),
       fuelType: vehicle.fuelType || 'Diesel',
-      status: vehicle.status,
+      status: vehicle.status.toLowerCase(),
     });
     setIsEditModalOpen(true);
   };
@@ -192,15 +245,17 @@ const Vehicles = () => {
     setIsDeleteModalOpen(true);
   };
 
-  // Toggle vehicle status
-  const toggleStatus = (vehicleId) => {
-    const updatedVehicles = vehicles.map(v =>
-      v.id === vehicleId
-        ? { ...v, status: v.status === 'Active' ? 'Inactive' : 'Active' }
-        : v
+  // Loading state
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <FiLoader className="w-12 h-12 animate-spin text-[#16834B] mx-auto mb-4" />
+          <p className="text-[#6B716D]">Loading vehicles...</p>
+        </div>
+      </div>
     );
-    setVehicles(updatedVehicles);
-  };
+  }
 
   return (
     <div>
@@ -314,8 +369,10 @@ const Vehicles = () => {
         </div>
       ) : (
         <EmptyState
-          title="No vehicles found"
-          description="Try adjusting your search or add a new vehicle."
+          title={vehicles.length === 0 ? "No vehicles added yet" : "No vehicles found"}
+          description={vehicles.length === 0 
+            ? "Start by adding your first vehicle to the fleet." 
+            : "Try adjusting your search criteria."}
           icon={FiTruck}
           action={
             <Button onClick={() => {
@@ -346,12 +403,22 @@ const Vehicles = () => {
                 setIsAddModalOpen(false);
                 resetForm();
               }}
+              disabled={isSubmitting}
             >
               Cancel
             </Button>
-            <Button onClick={handleAddVehicle}>
-              <FiPlus className="w-4 h-4 mr-2" />
-              Add Vehicle
+            <Button onClick={handleAddVehicle} disabled={isSubmitting}>
+              {isSubmitting ? (
+                <>
+                  <FiLoader className="w-4 h-4 mr-2 animate-spin" />
+                  Adding...
+                </>
+              ) : (
+                <>
+                  <FiPlus className="w-4 h-4 mr-2" />
+                  Add Vehicle
+                </>
+              )}
             </Button>
           </>
         }
@@ -460,8 +527,8 @@ const Vehicles = () => {
               onChange={handleInputChange}
               className="w-full px-4 py-2.5 border border-[#E5E8E6] rounded-lg focus:ring-2 focus:ring-[#111714] focus:border-transparent outline-none transition"
             >
-              <option value="Active">Active</option>
-              <option value="Inactive">Inactive</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
             </select>
           </div>
         </div>
@@ -484,12 +551,22 @@ const Vehicles = () => {
                 setIsEditModalOpen(false);
                 resetForm();
               }}
+              disabled={isSubmitting}
             >
               Cancel
             </Button>
-            <Button onClick={handleEditVehicle}>
-              <FiEdit2 className="w-4 h-4 mr-2" />
-              Update Vehicle
+            <Button onClick={handleEditVehicle} disabled={isSubmitting}>
+              {isSubmitting ? (
+                <>
+                  <FiLoader className="w-4 h-4 mr-2 animate-spin" />
+                  Updating...
+                </>
+              ) : (
+                <>
+                  <FiEdit2 className="w-4 h-4 mr-2" />
+                  Update Vehicle
+                </>
+              )}
             </Button>
           </>
         }
@@ -594,8 +671,8 @@ const Vehicles = () => {
               onChange={handleInputChange}
               className="w-full px-4 py-2.5 border border-[#E5E8E6] rounded-lg focus:ring-2 focus:ring-[#111714] focus:border-transparent outline-none transition"
             >
-              <option value="Active">Active</option>
-              <option value="Inactive">Inactive</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
             </select>
           </div>
         </div>
@@ -618,12 +695,22 @@ const Vehicles = () => {
                 setIsDeleteModalOpen(false);
                 resetForm();
               }}
+              disabled={isSubmitting}
             >
               Cancel
             </Button>
-            <Button variant="danger" onClick={handleDeleteVehicle}>
-              <FiTrash2 className="w-4 h-4 mr-2" />
-              Remove Vehicle
+            <Button variant="danger" onClick={handleDeleteVehicle} disabled={isSubmitting}>
+              {isSubmitting ? (
+                <>
+                  <FiLoader className="w-4 h-4 mr-2 animate-spin" />
+                  Removing...
+                </>
+              ) : (
+                <>
+                  <FiTrash2 className="w-4 h-4 mr-2" />
+                  Remove Vehicle
+                </>
+              )}
             </Button>
           </>
         }
