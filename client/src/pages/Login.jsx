@@ -22,7 +22,7 @@ const Login = () => {
   const [isLoading, setIsLoading] = useState(false);
 
   // API URL from environment or fallback
-const API_URL = import.meta.env.VITE_API_URL || 'https://yellow-butterfly-972674.hostingersite.com/api' || 'http://localhost:5000/api';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
   console.log('🔗 API URL:', API_URL);
   console.log('👤 Current user from context:', user);

@@ -55,6 +55,13 @@ const login = async (req, res) => {
       [user.id]
     );
     
+    // ✅ ADD DEBUG LOGS HERE
+    const JWT_SECRET = process.env.JWT_SECRET || 'bismilla_chicken_center_2026_super_secret_key';
+    
+    console.log('=================================');
+    console.log('🔑 SIGN SECRET:', JWT_SECRET);
+    console.log('=================================');
+    
     // Generate JWT token
     const token = jwt.sign(
       { 
@@ -63,9 +70,13 @@ const login = async (req, res) => {
         role: user.role,
         name: user.name 
       },
-      process.env.JWT_SECRET || 'your-secret-key',
+      JWT_SECRET,
       { expiresIn: '7d' }
     );
+    
+    console.log('✅ Generated Token:');
+    console.log(token);
+    console.log('=================================');
     
     console.log(`✅ User logged in: ${user.name} (${user.role})`);
     
