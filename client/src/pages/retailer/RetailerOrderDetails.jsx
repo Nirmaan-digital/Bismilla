@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { 
   FiArrowLeft, 
@@ -7,46 +8,53 @@ import {
   FiCalendar,
   FiClock,
   FiCheckCircle,
-  FiCircle
+  FiCircle,
+  FiLoader,
+  FiAlertCircle
 } from 'react-icons/fi';
 import Badge from '../../components/common/Badge';
 import Button from '../../components/common/Button';
-
-// Mock order details - will come from API
-const mockOrderDetails = {
-  id: 'ORD-1001',
-  date: '24 Jul 2026',
-  time: '10:30 AM',
-  status: 'En route',
-  items: [
-    { name: 'Whole Chicken', quantity: 70, rate: 210, total: 14700 },
-    { name: 'Chicken Breast', quantity: 50, rate: 198, total: 9900 },
-    { name: 'Chicken Legs', quantity: 100, rate: 180, total: 18000 },
-  ],
-  totalWeight: 220,
-  subtotal: 42600,
-  discount: 0,
-  deliveryCharge: 80,
-  grandTotal: 42680,
-  paidAmount: 15000,
-  balance: 27680,
-  paymentStatus: 'Partial',
-  driver: 'Ramesh Kumar',
-  driverPhone: '9876543220',
-  vehicle: 'KA-01-AB-1234',
-  deliveryStatus: 'En route',
-  timeline: [
-    { status: 'Order Placed', completed: true, time: '10:30 AM' },
-    { status: 'Confirmed', completed: true, time: '11:00 AM' },
-    { status: 'Processing', completed: true, time: '11:30 AM' },
-    { status: 'Out for Delivery', completed: true, time: '02:00 PM' },
-    { status: 'Delivered', completed: false, time: '-' },
-  ],
-};
+import api from '../../services/api';
 
 const RetailerOrderDetails = () => {
   const { id } = useParams();
-  const [order] = useState(mockOrderDetails);
+  const [order, setOrder] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // ✅ Fetch order details from API
+  useEffect(() => {
+    fetchOrderDetails();
+  }, [id]);
+
+  const fetchOrderDetails = async () => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      console.log(`📋 Fetching order ${id} details...`);
+      const response = await api.get(`/orders/${id}`);
+      console.log('✅ Order details:', response.data);
+      
+      if (response.data.success) {
+        setOrder(response.data.data);
+      } else {
+        setError(response.data.message || 'Failed to fetch order details');
+      }
+    } catch (error) {
+      console.error('❌ Error fetching order:', error);
+      
+      if (error.response) {
+        setError(error.response.data.message || 'Failed to fetch order');
+      } else if (error.request) {
+        setError('No response from server. Please check your connection.');
+      } else {
+        setError('An error occurred while fetching order details.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Format currency
   const formatCurrency = (amount) => {
@@ -55,8 +63,119 @@ const RetailerOrderDetails = () => {
       currency: 'INR',
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
-    }).format(amount);
+    }).format(amount || 0);
   };
+
+  // Format date
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric'
+    });
+  };
+
+  // Format time
+  const formatTime = (dateString) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    return date.toLocaleTimeString('en-IN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+  };
+
+  // Get status color
+  const getStatusInfo = (status) => {
+    const statusMap = {
+      'pending': { color: 'warning', label: 'Pending' },
+      'confirmed': { color: 'primary', label: 'Confirmed' },
+      'processing': { color: 'info', label: 'Processing' },
+      'out_for_delivery': { color: 'info', label: 'En route' },
+      'delivered': { color: 'success', label: 'Delivered' },
+      'cancelled': { color: 'error', label: 'Cancelled' }
+    };
+    return statusMap[status] || { color: 'default', label: status || 'Unknown' };
+  };
+
+  // Get payment status color
+  const getPaymentStatusInfo = (status) => {
+    const paymentMap = {
+      'paid': { color: 'success', label: 'Paid' },
+      'partial': { color: 'warning', label: 'Partial' },
+      'pending': { color: 'error', label: 'Pending' }
+    };
+    return paymentMap[status] || { color: 'default', label: status || 'Unknown' };
+  };
+
+  // Get timeline steps based on order status
+  const getTimeline = (status) => {
+    const steps = [
+      { status: 'Order Placed', key: 'pending' },
+      { status: 'Confirmed', key: 'confirmed' },
+      { status: 'Processing', key: 'processing' },
+      { status: 'Out for Delivery', key: 'out_for_delivery' },
+      { status: 'Delivered', key: 'delivered' }
+    ];
+
+    const statusOrder = ['pending', 'confirmed', 'processing', 'out_for_delivery', 'delivered'];
+    const currentIndex = statusOrder.indexOf(status);
+    
+    return steps.map((step, index) => ({
+      ...step,
+      completed: index <= currentIndex,
+      time: index <= currentIndex ? 'Completed' : 'Pending'
+    }));
+  };
+
+  // ✅ Loading state
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20">
+        <FiLoader className="w-12 h-12 text-[#111714] animate-spin" />
+        <p className="mt-4 text-[#6B716D]">Loading order details...</p>
+      </div>
+    );
+  }
+
+  // ✅ Error state
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20">
+        <FiAlertCircle className="w-12 h-12 text-[#D14343]" />
+        <p className="mt-4 text-[#D14343] font-medium">{error}</p>
+        <Link to="/retailer/orders">
+          <Button variant="outline" className="mt-4">
+            <FiArrowLeft className="w-4 h-4 mr-2" />
+            Back to Orders
+          </Button>
+        </Link>
+      </div>
+    );
+  }
+
+  // ✅ If no order found
+  if (!order) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20">
+        <FiAlertCircle className="w-12 h-12 text-[#6B716D]" />
+        <p className="mt-4 text-[#6B716D]">Order not found</p>
+        <Link to="/retailer/orders">
+          <Button variant="outline" className="mt-4">
+            <FiArrowLeft className="w-4 h-4 mr-2" />
+            Back to Orders
+          </Button>
+        </Link>
+      </div>
+    );
+  }
+
+  const statusInfo = getStatusInfo(order.order_status);
+  const paymentInfo = getPaymentStatusInfo(order.payment_status);
+  const timeline = getTimeline(order.order_status);
 
   return (
     <div>
@@ -69,48 +188,40 @@ const RetailerOrderDetails = () => {
       {/* Order Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-semibold text-[#151A17]">Order #{order.id}</h1>
+          <h1 className="text-2xl font-semibold text-[#151A17]">Order #{order.order_number}</h1>
           <p className="text-sm text-[#6B716D] mt-1">
-            Placed on {order.date} at {order.time}
+            Placed on {formatDate(order.order_date)} at {formatTime(order.order_date)}
           </p>
         </div>
-        <Badge variant="info">{order.status}</Badge>
+        <div className="flex gap-2">
+          <Badge variant={statusInfo.color}>{statusInfo.label}</Badge>
+          <Badge variant={paymentInfo.color}>{paymentInfo.label}</Badge>
+        </div>
       </div>
 
       {/* Order Details Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column - Order Items & Timeline */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Order Items */}
+          {/* Order Summary */}
           <div className="bg-white rounded-xl border border-[#E5E8E6] p-6">
-            <h3 className="font-semibold text-[#151A17] mb-4">Order Items</h3>
-            <div className="space-y-3">
-              {order.items.map((item, index) => (
-                <div key={index} className="flex items-center justify-between py-2 border-b border-[#E5E8E6] last:border-0">
-                  <div>
-                    <p className="text-sm font-medium text-[#151A17]">{item.name}</p>
-                    <p className="text-xs text-[#6B716D]">{item.quantity} kg × ₹{item.rate}</p>
-                  </div>
-                  <span className="text-sm font-medium text-[#151A17]">{formatCurrency(item.total)}</span>
-                </div>
-              ))}
-            </div>
-            <div className="mt-4 pt-4 border-t border-[#E5E8E6] space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-[#6B716D]">Subtotal</span>
-                <span className="text-[#151A17]">{formatCurrency(order.subtotal)}</span>
+            <h3 className="font-semibold text-[#151A17] mb-4">Order Summary</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-[#F6F7F6] rounded-lg p-3">
+                <p className="text-xs text-[#6B716D]">Total KG</p>
+                <p className="text-lg font-semibold text-[#151A17]">{order.kg_ordered} kg</p>
               </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-[#6B716D]">Discount</span>
-                <span className="text-[#151A17]">{formatCurrency(order.discount)}</span>
+              <div className="bg-[#F6F7F6] rounded-lg p-3">
+                <p className="text-xs text-[#6B716D]">Delivered KG</p>
+                <p className="text-lg font-semibold text-[#151A17]">{order.kg_delivered || 0} kg</p>
               </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-[#6B716D]">Delivery Charge</span>
-                <span className="text-[#151A17]">{formatCurrency(order.deliveryCharge)}</span>
+              <div className="bg-[#F6F7F6] rounded-lg p-3">
+                <p className="text-xs text-[#6B716D]">Rate per KG</p>
+                <p className="text-lg font-semibold text-[#151A17]">₹{order.rate_per_kg}</p>
               </div>
-              <div className="flex justify-between text-base font-bold pt-2 border-t border-[#E5E8E6]">
-                <span>Grand Total</span>
-                <span className="text-[#151A17]">{formatCurrency(order.grandTotal)}</span>
+              <div className="bg-[#F6F7F6] rounded-lg p-3">
+                <p className="text-xs text-[#6B716D]">Total Amount</p>
+                <p className="text-lg font-semibold text-[#151A17]">{formatCurrency(order.total_amount)}</p>
               </div>
             </div>
           </div>
@@ -119,7 +230,7 @@ const RetailerOrderDetails = () => {
           <div className="bg-white rounded-xl border border-[#E5E8E6] p-6">
             <h3 className="font-semibold text-[#151A17] mb-4">Order Timeline</h3>
             <div className="space-y-4">
-              {order.timeline.map((step, index) => (
+              {timeline.map((step, index) => (
                 <div key={index} className="flex items-start gap-3">
                   {step.completed ? (
                     <FiCheckCircle className="w-5 h-5 text-[#16834B] mt-0.5" />
@@ -146,20 +257,30 @@ const RetailerOrderDetails = () => {
             <div className="space-y-3">
               <div className="flex justify-between text-sm">
                 <span className="text-[#6B716D]">Total Amount</span>
-                <span className="font-medium">{formatCurrency(order.grandTotal)}</span>
+                <span className="font-medium">{formatCurrency(order.total_amount)}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-[#6B716D]">Paid Amount</span>
-                <span className="font-medium text-[#16834B]">{formatCurrency(order.paidAmount)}</span>
+                <span className="font-medium text-[#16834B]">{formatCurrency(order.paid_amount)}</span>
               </div>
               <div className="flex justify-between text-sm font-semibold">
                 <span className="text-[#6B716D]">Balance</span>
                 <span className="text-[#D14343]">{formatCurrency(order.balance)}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-[#6B716D]">Payment Status</span>
-                <Badge variant="warning">{order.paymentStatus}</Badge>
+                <span className="text-[#6B716D]">Payment Method</span>
+                <span className="font-medium capitalize">{order.payment_method || 'N/A'}</span>
               </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-[#6B716D]">Payment Status</span>
+                <Badge variant={paymentInfo.color}>{paymentInfo.label}</Badge>
+              </div>
+              {order.upi_transaction_id && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-[#6B716D]">UPI Transaction</span>
+                  <span className="font-medium text-xs">{order.upi_transaction_id}</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -167,21 +288,35 @@ const RetailerOrderDetails = () => {
           <div className="bg-white rounded-xl border border-[#E5E8E6] p-6">
             <h3 className="font-semibold text-[#151A17] mb-4">Delivery Details</h3>
             <div className="space-y-3">
-              <div className="flex items-center gap-3">
-                <FiTruck className="w-4 h-4 text-[#6B716D]" />
+              <div className="flex items-start gap-3">
+                <FiPackage className="w-4 h-4 text-[#6B716D] mt-0.5" />
                 <div>
-                  <p className="text-sm font-medium text-[#151A17]">{order.driver}</p>
-                  <p className="text-xs text-[#6B716D]">{order.driverPhone}</p>
+                  <p className="text-sm text-[#6B716D]">Delivery Address</p>
+                  <p className="text-sm font-medium text-[#151A17]">
+                    {order.delivery_address || 'Not provided'}
+                  </p>
                 </div>
               </div>
-              <div className="flex items-center gap-3">
-                <FiPackage className="w-4 h-4 text-[#6B716D]" />
-                <span className="text-sm text-[#151A17]">{order.vehicle}</span>
-              </div>
-              <div className="flex items-center gap-3">
-                <FiClock className="w-4 h-4 text-[#6B716D]" />
-                <span className="text-sm text-[#151A17]">{order.deliveryStatus}</span>
-              </div>
+              {order.delivered_date && (
+                <div className="flex items-center gap-3">
+                  <FiCalendar className="w-4 h-4 text-[#16834B]" />
+                  <div>
+                    <p className="text-sm text-[#6B716D]">Delivered On</p>
+                    <p className="text-sm font-medium text-[#151A17]">
+                      {formatDate(order.delivered_date)}
+                    </p>
+                  </div>
+                </div>
+              )}
+              {order.notes && (
+                <div className="flex items-start gap-3">
+                  <FiClock className="w-4 h-4 text-[#6B716D] mt-0.5" />
+                  <div>
+                    <p className="text-sm text-[#6B716D]">Notes</p>
+                    <p className="text-sm font-medium text-[#151A17]">{order.notes}</p>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -193,10 +328,12 @@ const RetailerOrderDetails = () => {
                 <FiCreditCard className="w-4 h-4 mr-2" />
                 Make Payment
               </Button>
-              <Button variant="outline" className="w-full">
-                <FiPackage className="w-4 h-4 mr-2" />
-                Reorder
-              </Button>
+              <Link to="/retailer/place-order" className="w-full">
+                <Button variant="outline" className="w-full">
+                  <FiPackage className="w-4 h-4 mr-2" />
+                  Reorder
+                </Button>
+              </Link>
             </div>
           </div>
         </div>

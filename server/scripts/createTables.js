@@ -13,9 +13,11 @@ const createTables = async () => {
       connectionLimit: 10,
     });
 
-    console.log('📦 Connected to database, creating tables...');
+    console.log('📦 Connected to database...');
 
-    // Users Table
+    // ============================================
+    // 1. USERS TABLE
+    // ============================================
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
         id INT PRIMARY KEY AUTO_INCREMENT,
@@ -23,7 +25,7 @@ const createTables = async () => {
         email VARCHAR(100) UNIQUE,
         phone VARCHAR(15) UNIQUE NOT NULL,
         password VARCHAR(255) NOT NULL,
-        role ENUM('admin', 'retailer', 'driver') NOT NULL,
+        role ENUM('admin', 'retailer', 'driver', 'staff') NOT NULL,
         status ENUM('active', 'inactive') DEFAULT 'active',
         last_login TIMESTAMP NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -33,15 +35,17 @@ const createTables = async () => {
         INDEX idx_role (role)
       )
     `);
-    console.log('✅ Users table created');
+    console.log('✅ Users table ready');
 
-    // Staff Table
+    // ============================================
+    // 2. STAFF TABLE
+    // ============================================
     await pool.query(`
       CREATE TABLE IF NOT EXISTS staff (
         id INT PRIMARY KEY AUTO_INCREMENT,
         name VARCHAR(100) NOT NULL,
         phone VARCHAR(15) UNIQUE NOT NULL,
-        role ENUM('driver', 'cleaner') NOT NULL,
+        role ENUM('driver', 'cleaner', 'helper') NOT NULL,
         daily_salary DECIMAL(10,2) NOT NULL,
         status ENUM('active', 'inactive', 'on_leave') DEFAULT 'active',
         join_date DATE,
@@ -51,9 +55,11 @@ const createTables = async () => {
         INDEX idx_role (role)
       )
     `);
-    console.log('✅ Staff table created');
+    console.log('✅ Staff table ready');
 
-    // Pricing Table
+    // ============================================
+    // 3. PRICING TABLE
+    // ============================================
     await pool.query(`
       CREATE TABLE IF NOT EXISTS pricing (
         id INT PRIMARY KEY AUTO_INCREMENT,
@@ -62,9 +68,11 @@ const createTables = async () => {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       )
     `);
-    console.log('✅ Pricing table created');
+    console.log('✅ Pricing table ready');
 
-    // Retailers Table
+    // ============================================
+    // 4. RETAILERS TABLE
+    // ============================================
     await pool.query(`
       CREATE TABLE IF NOT EXISTS retailers (
         id INT PRIMARY KEY AUTO_INCREMENT,
@@ -88,9 +96,11 @@ const createTables = async () => {
         INDEX idx_phone (phone)
       )
     `);
-    console.log('✅ Retailers table created');
+    console.log('✅ Retailers table ready');
 
-    // Drivers Table
+    // ============================================
+    // 5. DRIVERS TABLE
+    // ============================================
     await pool.query(`
       CREATE TABLE IF NOT EXISTS drivers (
         id INT PRIMARY KEY AUTO_INCREMENT,
@@ -110,9 +120,11 @@ const createTables = async () => {
         INDEX idx_phone (phone)
       )
     `);
-    console.log('✅ Drivers table created');
+    console.log('✅ Drivers table ready');
 
-    // Vehicles Table
+    // ============================================
+    // 6. VEHICLES TABLE
+    // ============================================
     await pool.query(`
       CREATE TABLE IF NOT EXISTS vehicles (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -130,9 +142,13 @@ const createTables = async () => {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       )
     `);
-    console.log('✅ Vehicles table created');
+    console.log('✅ Vehicles table ready');
 
-    // Orders Table
+    // ============================================
+    // 7. ORDERS TABLE - CREATE IF NOT EXISTS + ALTER
+    // ============================================
+    
+    // First, create the table if it doesn't exist
     await pool.query(`
       CREATE TABLE IF NOT EXISTS orders (
         id INT PRIMARY KEY AUTO_INCREMENT,
@@ -153,20 +169,107 @@ const createTables = async () => {
         trip_id INT NULL,
         delivery_address TEXT,
         order_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        delivered_date DATE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        delivered_date DATE NULL,
         FOREIGN KEY (retailer_id) REFERENCES retailers(id) ON DELETE CASCADE,
         FOREIGN KEY (driver_id) REFERENCES drivers(id) ON DELETE SET NULL,
         INDEX idx_order_number (order_number),
         INDEX idx_retailer_id (retailer_id),
         INDEX idx_driver_id (driver_id),
-        INDEX idx_order_status (order_status)
+        INDEX idx_order_status (order_status),
+        INDEX idx_payment_status (payment_status),
+        INDEX idx_order_date (order_date)
       )
     `);
-    console.log('✅ Orders table created');
+    console.log('✅ Orders table created or already exists');
 
-    // Trips Table
+    // ============================================
+    // NOW ADD MISSING COLUMNS USING ALTER TABLE
+    // ============================================
+    console.log('📝 Checking for missing columns in orders table...');
+
+    // Get existing columns
+    const [columns] = await pool.query('DESCRIBE orders');
+    const columnNames = columns.map(col => col.Field);
+    console.log('📊 Existing columns:', columnNames);
+
+    // Check and add payment_method
+    if (!columnNames.includes('payment_method')) {
+      await pool.query(`
+        ALTER TABLE orders 
+        ADD COLUMN payment_method ENUM('upi', 'cash', 'bank_transfer', 'cheque', 'pending') 
+        DEFAULT 'pending' 
+        AFTER balance
+      `);
+      console.log('✅ Added payment_method column');
+    }
+
+    // Check and add notes
+    if (!columnNames.includes('notes')) {
+      await pool.query(`
+        ALTER TABLE orders 
+        ADD COLUMN notes TEXT 
+        AFTER delivery_address
+      `);
+      console.log('✅ Added notes column');
+    }
+
+    // Check and add upi_transaction_id
+    if (!columnNames.includes('upi_transaction_id')) {
+      await pool.query(`
+        ALTER TABLE orders 
+        ADD COLUMN upi_transaction_id VARCHAR(100) 
+        AFTER payment_method
+      `);
+      console.log('✅ Added upi_transaction_id column');
+    }
+
+    // Check and add created_at
+    if (!columnNames.includes('created_at')) {
+      await pool.query(`
+        ALTER TABLE orders 
+        ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      `);
+      console.log('✅ Added created_at column');
+    }
+
+    // Check and add updated_at
+    if (!columnNames.includes('updated_at')) {
+      await pool.query(`
+        ALTER TABLE orders 
+        ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      `);
+      console.log('✅ Added updated_at column');
+    }
+
+    // Fix balance column if it's named incorrectly
+    if (columnNames.includes('balance_payment_status')) {
+      await pool.query(`
+        ALTER TABLE orders 
+        CHANGE COLUMN balance_payment_status balance DECIMAL(10,2) DEFAULT 0
+      `);
+      console.log('✅ Fixed balance column name');
+    }
+
+    // Add indexes
+    try {
+      await pool.query(`CREATE INDEX idx_payment_method ON orders(payment_method)`);
+      console.log('✅ Added idx_payment_method index');
+    } catch (e) {
+      // Index might already exist
+    }
+
+    try {
+      await pool.query(`CREATE INDEX idx_orders_created_at ON orders(created_at DESC)`);
+      console.log('✅ Added idx_orders_created_at index');
+    } catch (e) {
+      // Index might already exist
+    }
+
+    console.log('✅ Orders table is now complete with all columns');
+
+    // ============================================
+    // 8. TRIPS TABLE
+    // ============================================
     await pool.query(`
       CREATE TABLE IF NOT EXISTS trips (
         id INT PRIMARY KEY AUTO_INCREMENT,
@@ -185,9 +288,11 @@ const createTables = async () => {
         INDEX idx_trip_number (trip_number)
       )
     `);
-    console.log('✅ Trips table created');
+    console.log('✅ Trips table ready');
 
-    // Trip Orders Table
+    // ============================================
+    // 9. TRIP ORDERS TABLE
+    // ============================================
     await pool.query(`
       CREATE TABLE IF NOT EXISTS trip_orders (
         id INT PRIMARY KEY AUTO_INCREMENT,
@@ -204,15 +309,17 @@ const createTables = async () => {
         INDEX idx_order_id (order_id)
       )
     `);
-    console.log('✅ Trip Orders table created');
+    console.log('✅ Trip Orders table ready');
 
-    // Staff Trips Table
+    // ============================================
+    // 10. STAFF TRIPS TABLE
+    // ============================================
     await pool.query(`
       CREATE TABLE IF NOT EXISTS staff_trips (
         id INT PRIMARY KEY AUTO_INCREMENT,
         staff_id INT NOT NULL,
         trip_id INT NOT NULL,
-        role ENUM('driver', 'cleaner') NOT NULL,
+        role ENUM('driver', 'cleaner', 'helper') NOT NULL,
         date DATE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE CASCADE,
@@ -221,9 +328,11 @@ const createTables = async () => {
         INDEX idx_trip_id (trip_id)
       )
     `);
-    console.log('✅ Staff Trips table created');
+    console.log('✅ Staff Trips table ready');
 
-    // Payments Table
+    // ============================================
+    // 11. PAYMENTS TABLE
+    // ============================================
     await pool.query(`
       CREATE TABLE IF NOT EXISTS payments (
         id INT PRIMARY KEY AUTO_INCREMENT,
@@ -246,17 +355,21 @@ const createTables = async () => {
         INDEX idx_payment_number (payment_number),
         INDEX idx_retailer_id (retailer_id),
         INDEX idx_order_id (order_id),
-        INDEX idx_status (status)
+        INDEX idx_status (status),
+        INDEX idx_payments_retailer_date (retailer_id, date DESC)
       )
     `);
-    console.log('✅ Payments table created');
+    console.log('✅ Payments table ready');
 
-    // Ledger Table
+    // ============================================
+    // 12. LEDGER TABLE
+    // ============================================
     await pool.query(`
       CREATE TABLE IF NOT EXISTS ledger (
         id INT PRIMARY KEY AUTO_INCREMENT,
         retailer_id INT NOT NULL,
         order_id INT NULL,
+        payment_id INT NULL,
         type ENUM('debit', 'credit') NOT NULL,
         amount DECIMAL(10,2) NOT NULL,
         description VARCHAR(255),
@@ -264,13 +377,17 @@ const createTables = async () => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (retailer_id) REFERENCES retailers(id) ON DELETE CASCADE,
         FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE SET NULL,
+        FOREIGN KEY (payment_id) REFERENCES payments(id) ON DELETE SET NULL,
         INDEX idx_retailer_id (retailer_id),
-        INDEX idx_order_id (order_id)
+        INDEX idx_order_id (order_id),
+        INDEX idx_payment_id (payment_id)
       )
     `);
-    console.log('✅ Ledger table created');
+    console.log('✅ Ledger table ready');
 
-    // Expenses Table
+    // ============================================
+    // 13. EXPENSES TABLE
+    // ============================================
     await pool.query(`
       CREATE TABLE IF NOT EXISTS expenses (
         id INT PRIMARY KEY AUTO_INCREMENT,
@@ -284,9 +401,11 @@ const createTables = async () => {
         INDEX idx_category (category)
       )
     `);
-    console.log('✅ Expenses table created');
+    console.log('✅ Expenses table ready');
 
-    // Retailer Pricing Table
+    // ============================================
+    // 14. RETAILER PRICING TABLE
+    // ============================================
     await pool.query(`
       CREATE TABLE IF NOT EXISTS retailer_pricing (
         id INT PRIMARY KEY AUTO_INCREMENT,
@@ -298,27 +417,39 @@ const createTables = async () => {
         INDEX idx_retailer_id (retailer_id)
       )
     `);
-    console.log('✅ Retailer Pricing table created');
+    console.log('✅ Retailer Pricing table ready');
 
-    // Insert default admin user (password will be hashed later)
+    // ============================================
+    // DEFAULT DATA
+    // ============================================
+
     await pool.query(`
       INSERT IGNORE INTO users (name, phone, password, role, status) 
-      VALUES ('Mohammed Admin', '9999999999', 'admin123', 'admin', 'active')
+      VALUES ('Mohammed Admin', '9999999999', '$2a$10$YourHashedPasswordHere', 'admin', 'active')
     `);
-    console.log('✅ Default admin user created');
+    console.log('✅ Default admin user ready');
 
-    // Insert default pricing
     await pool.query(`
       INSERT IGNORE INTO pricing (default_price_per_kg, updated_by) 
       VALUES (188.00, 'System')
     `);
-    console.log('✅ Default pricing set');
+    console.log('✅ Default pricing ready');
 
-    console.log('\n🎉 All tables created successfully!');
+    console.log('\n🎉 All tables are ready!');
+    console.log('📊 Orders table has been updated with all required columns');
+    
+    // Show final table structure
+    const [finalColumns] = await pool.query('DESCRIBE orders');
+    console.log('\n📋 Final Orders Table Structure:');
+    finalColumns.forEach(col => {
+      console.log(`  ${col.Field}: ${col.Type}`);
+    });
+
     process.exit(0);
 
   } catch (error) {
-    console.error('❌ Error creating tables:', error.message);
+    console.error('❌ Error:', error.message);
+    console.error('❌ Details:', error.stack);
     process.exit(1);
   }
 };
