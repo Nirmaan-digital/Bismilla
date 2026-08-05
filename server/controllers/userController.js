@@ -74,8 +74,10 @@ const getUserById = async (req, res) => {
   }
 };
 
-// Create new user
+// Create new user with automatic profile creation
 const createUser = async (req, res) => {
+  const connection = await pool.getConnection();
+  
   try {
     console.log('➕ Creating new user:', req.body);
     const { name, email, phone, role, password } = req.body;
@@ -88,13 +90,17 @@ const createUser = async (req, res) => {
       });
     }
     
+    // Start transaction
+    await connection.beginTransaction();
+    
     // Check if phone already exists
-    const [existingPhone] = await pool.query(
+    const [existingPhone] = await connection.query(
       'SELECT id FROM users WHERE phone = ?',
       [phone]
     );
     
     if (existingPhone.length > 0) {
+      await connection.rollback();
       return res.status(400).json({
         success: false,
         message: 'User with this phone number already exists'
@@ -103,12 +109,13 @@ const createUser = async (req, res) => {
     
     // Check if email exists (if provided)
     if (email) {
-      const [existingEmail] = await pool.query(
+      const [existingEmail] = await connection.query(
         'SELECT id FROM users WHERE email = ?',
         [email]
       );
       
       if (existingEmail.length > 0) {
+        await connection.rollback();
         return res.status(400).json({
           success: false,
           message: 'User with this email already exists'
@@ -120,14 +127,82 @@ const createUser = async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
     
-    // Insert new user - with email
-    const [result] = await pool.query(`
+    // Insert user
+    const [result] = await connection.query(`
       INSERT INTO users (name, email, phone, password, role, status)
       VALUES (?, ?, ?, ?, ?, 'active')
     `, [name, email, phone, hashedPassword, role]);
     
+    const userId = result.insertId;
+    console.log(`✅ User created with ID: ${userId}`);
+    
+    // ✅ AUTOMATICALLY CREATE PROFILE BASED ON ROLE
+    if (role === 'retailer') {
+      // Create retailer profile
+      await connection.query(`
+        INSERT INTO retailers (
+          user_id,
+          owner_name,
+          shop_name,
+          phone,
+          email,
+          address,
+          area,
+          city,
+          pincode,
+          credit_limit,
+          outstanding,
+          status,
+          joined_date
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE())
+      `, [
+        userId,
+        name,
+        `${name}'s Shop`,
+        phone,
+        email || null,
+        null,  // address
+        null,  // area
+        null,  // city
+        null,  // pincode
+        50000, // default credit limit
+        0,     // outstanding balance
+        'active'
+      ]);
+      console.log(`✅ Retailer profile created for ${name}`);
+      
+    } else if (role === 'driver') {
+      // Create driver profile
+      await connection.query(`
+        INSERT INTO drivers (
+          user_id,
+          name,
+          phone,
+          vehicle_number,
+          vehicle_type,
+          license_number,
+          status,
+          daily_salary,
+          joined_date
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURDATE())
+      `, [
+        userId,
+        name,
+        phone,
+        null,  // vehicle_number (to be added later)
+        null,  // vehicle_type (to be added later)
+        null,  // license_number (to be added later)
+        'available',
+        0      // daily_salary (to be set later)
+      ]);
+      console.log(`✅ Driver profile created for ${name}`);
+    }
+    
+    // Commit transaction
+    await connection.commit();
+    
     // Get the newly created user
-    const [newUser] = await pool.query(`
+    const [newUser] = await connection.query(`
       SELECT 
         id,
         name,
@@ -138,22 +213,24 @@ const createUser = async (req, res) => {
         DATE_FORMAT(created_at, '%d %b %Y') as createdAt
       FROM users 
       WHERE id = ?
-    `, [result.insertId]);
-    
-    console.log(`✅ User created with ID: ${result.insertId}`);
+    `, [userId]);
     
     res.status(201).json({
       success: true,
-      message: 'User created successfully',
+      message: `User created successfully with ${role} profile`,
       data: newUser[0]
     });
+    
   } catch (error) {
+    await connection.rollback();
     console.error('❌ Error creating user:', error);
     res.status(500).json({
       success: false,
       message: 'Error creating user',
       error: error.message
     });
+  } finally {
+    connection.release();
   }
 };
 
@@ -276,7 +353,7 @@ const deleteUser = async (req, res) => {
       }
     }
     
-    // Delete user
+    // Delete user (cascading delete will remove profile)
     await pool.query('DELETE FROM users WHERE id = ?', [id]);
     
     console.log(`✅ User ${id} deleted successfully`);
