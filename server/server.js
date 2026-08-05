@@ -9,6 +9,7 @@ const retailerRoutes = require('./routes/retailers');
 const staffRoutes = require('./routes/staff');
 const vehicleRoutes = require('./routes/vehicles');
 const pricingRoutes = require('./routes/pricing');
+const orderRoutes = require('./routes/orders');
 
 dotenv.config();
 
@@ -74,6 +75,7 @@ app.use('/api/retailers', retailerRoutes);
 app.use('/api/staff', staffRoutes);
 app.use('/api/vehicles', vehicleRoutes);
 app.use('/api/pricing', pricingRoutes);
+app.use('/api/orders', orderRoutes)
 
 // 404 handler
 app.use((req, res) => {
