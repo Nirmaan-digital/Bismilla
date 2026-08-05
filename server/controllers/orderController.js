@@ -243,7 +243,7 @@ const getMyOrders = async (req, res) => {
 };
 
 // ============================================
-// GET ALL ORDERS (Admin)
+// GET ALL ORDERS (Admin) 🔥 UPDATED TO FILTER BY RETAILER
 // ============================================
 const getAllOrders = async (req, res) => {
     try {
@@ -254,9 +254,12 @@ const getAllOrders = async (req, res) => {
             });
         }
 
-        console.log('📋 Fetching all orders...');
-        
-        const [orders] = await pool.query(`
+        console.log('📋 Fetching orders...');
+
+        // 🔥 NEW: Check if a specific retailer_id was sent in the query params
+        const { retailer_id } = req.query;
+
+        let sqlQuery = `
             SELECT 
                 o.*,
                 r.shop_name,
@@ -264,8 +267,19 @@ const getAllOrders = async (req, res) => {
                 r.phone as retailer_phone
             FROM orders o
             JOIN retailers r ON o.retailer_id = r.id
-            ORDER BY o.created_at DESC
-        `);
+        `;
+        
+        let queryParams = [];
+
+        // If a retailer_id is passed, filter ONLY for that retailer
+        if (retailer_id) {
+            sqlQuery += ` WHERE o.retailer_id = ?`;
+            queryParams.push(retailer_id);
+        }
+
+        sqlQuery += ` ORDER BY o.created_at DESC`;
+
+        const [orders] = await pool.query(sqlQuery, queryParams);
 
         console.log(`✅ Found ${orders.length} orders`);
 
@@ -456,11 +470,149 @@ const getOrderStats = async (req, res) => {
     }
 };
 
+// ============================================
+// NEW: RECORD A PAYMENT (Admin only)
+// ============================================
+const recordPayment = async (req, res) => {
+    let connection;
+    try {
+        // Admin check (Optional: Remove if you want retailers to record payments too)
+        if (req.user.role !== 'admin') {
+            return res.status(403).json({
+                success: false,
+                message: 'Access denied. Admin only.'
+            });
+        }
+
+        const { 
+            retailer_id, 
+            amount, 
+            payment_method, 
+            bill_allocations 
+        } = req.body;
+
+        // 1. Validate Input
+        if (!retailer_id || !amount || amount <= 0 || !bill_allocations || bill_allocations.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid payment data. Amount and bill allocations are required.'
+            });
+        }
+
+        connection = await pool.getConnection();
+        await connection.beginTransaction();
+
+        // 2. Get current retailer outstanding balance
+        const [retailerRows] = await connection.query(
+            'SELECT outstanding FROM retailers WHERE id = ?',
+            [retailer_id]
+        );
+        
+        if (retailerRows.length === 0) {
+            throw new Error('Retailer not found');
+        }
+
+        const currentOutstanding = parseFloat(retailerRows[0].outstanding) || 0;
+        const newOutstanding = Math.max(0, currentOutstanding - amount);
+
+        // 3. Update specific bill balances (FIFO)
+        let processedAmount = 0;
+        let lastUpdatedOrderId = null;
+        
+        for (const alloc of bill_allocations) {
+            if (!alloc.bill_id || alloc.amount_paid <= 0) continue;
+
+            const [orderRows] = await connection.query(
+                'SELECT id, balance, paid_amount FROM orders WHERE order_number = ? AND retailer_id = ?',
+                [alloc.bill_id, retailer_id]
+            );
+
+            if (orderRows.length === 0) continue;
+
+            const order = orderRows[0];
+            const currentBillBalance = parseFloat(order.balance) || 0;
+            const payAmount = Math.min(alloc.amount_paid, currentBillBalance);
+
+            if (payAmount > 0) {
+                await connection.query(
+                    `UPDATE orders 
+                     SET balance = balance - ?, 
+                         paid_amount = paid_amount + ? 
+                     WHERE id = ?`,
+                    [payAmount, payAmount, order.id]
+                );
+                
+                lastUpdatedOrderId = order.id; 
+                processedAmount += payAmount;
+            }
+        }
+
+        // 4. Update retailer total outstanding
+        await connection.query(
+            'UPDATE retailers SET outstanding = ? WHERE id = ?',
+            [newOutstanding, retailer_id]
+        );
+
+        // 5. Insert into ledgers table
+        const description = `Payment via ${payment_method}`;
+        const currentDate = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+
+        await connection.query(
+            `INSERT INTO ledgers 
+             (retailer_id, order_id, type, amount, description, date, created_at) 
+             VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+            [retailer_id, lastUpdatedOrderId, 'credit', amount, description, currentDate]
+        );
+
+        // 6. Commit transaction
+        await connection.commit();
+
+        res.status(200).json({
+            success: true,
+            message: 'Payment recorded successfully',
+            data: {
+                newOutstanding: newOutstanding,
+                processedAmount: processedAmount
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Error in recordPayment:', error);
+        
+        if (connection) {
+            try {
+                await connection.rollback();
+                console.log('🔄 Transaction rolled back');
+            } catch (rollbackError) {
+                console.error('❌ Rollback failed:', rollbackError);
+            }
+        }
+        
+        res.status(500).json({ 
+            success: false, 
+            message: error.message || 'Failed to record payment' 
+        });
+    } finally {
+        if (connection) {
+            try {
+                connection.release();
+                console.log('🔌 Connection released');
+            } catch (releaseError) {
+                console.error('❌ Release failed:', releaseError);
+            }
+        }
+    }
+};
+
+// ============================================
+// EXPORT ALL CONTROLLERS
+// ============================================
 module.exports = {
     createOrder,
     getMyOrders,
     getAllOrders,
     getOrderById,
     updateOrderStatus,
-    getOrderStats
+    getOrderStats,
+    recordPayment
 };

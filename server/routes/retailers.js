@@ -3,18 +3,24 @@ const router = express.Router();
 const retailerController = require('../controllers/retailerController');
 const authMiddleware = require('../middleware/auth');
 
-// Public route - Create retailer (no auth needed)
+// ============================================
+// PUBLIC ROUTES (No auth required)
+// ============================================
+// Create retailer (Admin only - but no auth here for registration)
 router.post('/', retailerController.createRetailer);
 
-// Protected routes (auth required)
+// ============================================
+// PROTECTED ROUTES (Auth required)
+// ============================================
 router.use(authMiddleware);
 
-// Retailer dashboard endpoints
+// ✅ Admin routes
+router.get('/', retailerController.getAllRetailers);
+router.get('/customers', retailerController.getRetailerCustomers); // ✅ NEW
+
+// ✅ Retailer dashboard routes
 router.get('/me', retailerController.getRetailerInfo);
 router.get('/orders', retailerController.getRetailerOrders);
 router.get('/stats', retailerController.getRetailerStats);
-
-// Admin routes
-router.get('/', retailerController.getAllRetailers);
 
 module.exports = router;
