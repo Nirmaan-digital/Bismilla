@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import axios from 'axios';
 import { 
   FiSearch,
   FiEye,
@@ -10,153 +12,87 @@ import {
   FiPhone,
   FiCalendar,
   FiDollarSign,
-  FiPackage
+  FiPackage,
+  FiLoader,
+  FiAlertCircle
 } from 'react-icons/fi';
 import Button from '../../components/common/Button';
 import Badge from '../../components/common/Badge';
 import SearchInput from '../../components/common/SearchInput';
 import EmptyState from '../../components/common/EmptyState';
-
-// Mock orders data
-const mockOrders = [
-  {
-    id: 'ORD-1001',
-    customer: 'Sharma Chicken Corner',
-    phone: '9876543210',
-    date: '24/7/2026',
-    kg: 220,
-    rate: 194,
-    amount: 42680,
-    payment: 'Credit',
-    delivery: 'In Transit',  // Changed from 'En route' to 'In Transit'
-    assigned: 'Ramesh Kumar',
-    vehicle: 'KA-01-AB-1234',
-  },
-  {
-    id: 'ORD-1002',
-    customer: 'Khan Poultry',
-    phone: '9876543211',
-    date: '24/7/2026',
-    kg: 150,
-    rate: 188,
-    amount: 28200,
-    payment: 'Paid',
-    delivery: 'Delivered',
-    assigned: 'Salim Ahmed',
-    vehicle: 'KA-01-CD-5678',
-  },
-  {
-    id: 'ORD-1003',
-    customer: 'Reddy Fresh Meats',
-    phone: '9876543212',
-    date: '24/7/2026',
-    kg: 400,
-    rate: 194,
-    amount: 77600,
-    payment: 'Credit',
-    delivery: 'Pending',
-    assigned: 'Ramesh Kumar',
-    vehicle: 'KA-01-AB-1234',
-  },
-  {
-    id: 'ORD-1004',
-    customer: 'Gupta Poultry House',
-    phone: '9876543214',
-    date: '23/7/2026',
-    kg: 300,
-    rate: 188,
-    amount: 56400,
-    payment: 'Paid',
-    delivery: 'Delivered',
-    assigned: 'Salim Ahmed',
-    vehicle: 'KA-01-CD-5678',
-  },
-  {
-    id: 'ORD-1005',
-    customer: 'Sharma Chicken Corner',
-    phone: '9876543210',
-    date: '23/7/2026',
-    kg: 180,
-    rate: 190,
-    amount: 34200,
-    payment: 'Paid',
-    delivery: 'Delivered',
-    assigned: 'Ramesh Kumar',
-    vehicle: 'KA-01-AB-1234',
-  },
-  {
-    id: 'ORD-1006',
-    customer: 'Patel Chicken',
-    phone: '9876543213',
-    date: '22/7/2026',
-    kg: 120,
-    rate: 188,
-    amount: 22560,
-    payment: 'Paid',
-    delivery: 'Delivered',
-    assigned: 'Ganesh Rao',
-    vehicle: 'KA-01-EF-9012',
-  },
-  {
-    id: 'ORD-1007',
-    customer: 'Khan Poultry',
-    phone: '9876543211',
-    date: '21/7/2026',
-    kg: 200,
-    rate: 194,
-    amount: 38800,
-    payment: 'Credit',
-    delivery: 'Delivered',
-    assigned: 'Salim Ahmed',
-    vehicle: 'KA-01-CD-5678',
-  },
-  {
-    id: 'ORD-1008',
-    customer: 'Reddy Fresh Meats',
-    phone: '9876543212',
-    date: '24/7/2026',
-    kg: 500,
-    rate: 188,
-    amount: 94000,
-    payment: 'Paid',
-    delivery: 'Pending',
-    assigned: '—',
-    vehicle: '—',
-  },
-];
+import { useAuth } from '../../context/AuthContext';
 
 const Orders = () => {
-  const [orders] = useState(mockOrders);
+  const { user } = useAuth();
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [orders, setOrders] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeFilter, setActiveFilter] = useState('all');
+
+  useEffect(() => {
+    fetchOrders();
+  }, []);
+
+  const fetchOrders = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const token = localStorage.getItem('token');
+      const headers = { Authorization: `Bearer ${token}` };
+
+      const response = await axios.get(`${API_URL}/orders`, { headers });
+      
+      if (response.data.success) {
+        setOrders(response.data.data);
+        console.log('✅ Orders loaded:', response.data.data.length);
+      } else {
+        setError(response.data.message || 'Failed to fetch orders');
+      }
+    } catch (error) {
+      console.error('❌ Error fetching orders:', error);
+      if (error.response) {
+        setError(error.response.data.message || 'Failed to fetch orders');
+      } else if (error.request) {
+        setError('No response from server. Please check your connection.');
+      } else {
+        setError('An error occurred while fetching orders.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Get filtered counts
   const getFilterCounts = () => {
     const all = orders.length;
-    const pending = orders.filter(o => o.delivery === 'Pending').length;
-    const inTransit = orders.filter(o => o.delivery === 'In Transit').length;
-    const delivered = orders.filter(o => o.delivery === 'Delivered').length;
+    const pending = orders.filter(o => o.order_status === 'pending').length;
+    const inTransit = orders.filter(o => o.order_status === 'out_for_delivery').length;
+    const delivered = orders.filter(o => o.order_status === 'delivered').length;
     return { all, pending, inTransit, delivered };
   };
 
   const counts = getFilterCounts();
 
-  // Filter orders based on search and active filter
+  // Filter orders
   const filteredOrders = orders.filter(order => {
-    const matchesSearch = order.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          order.customer.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          order.phone.includes(searchTerm);
+    const matchesSearch = order.order_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          order.shop_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          order.retailer_phone?.includes(searchTerm);
     
     let matchesFilter = true;
     switch(activeFilter) {
       case 'pending':
-        matchesFilter = order.delivery === 'Pending';
+        matchesFilter = order.order_status === 'pending';
         break;
       case 'inTransit':
-        matchesFilter = order.delivery === 'In Transit';
+        matchesFilter = order.order_status === 'out_for_delivery';
         break;
       case 'delivered':
-        matchesFilter = order.delivery === 'Delivered';
+        matchesFilter = order.order_status === 'delivered';
         break;
       default:
         matchesFilter = true;
@@ -172,28 +108,86 @@ const Orders = () => {
       currency: 'INR',
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
-    }).format(amount);
+    }).format(amount || 0);
   };
 
-  // Get delivery status color
-  const getDeliveryColor = (status) => {
+  // Format date
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    });
+  };
+
+  // Get status color
+  const getStatusColor = (status) => {
     const colors = {
-      'Delivered': 'success',
-      'In Transit': 'info',
-      'Pending': 'warning',
+      'delivered': 'success',
+      'out_for_delivery': 'info',
+      'processing': 'primary',
+      'pending': 'warning',
+      'cancelled': 'danger'
     };
     return colors[status] || 'default';
   };
 
-  // Get payment status color
+  const getStatusLabel = (status) => {
+    const labels = {
+      'pending': 'Pending',
+      'confirmed': 'Confirmed',
+      'processing': 'Processing',
+      'out_for_delivery': 'Out for Delivery',
+      'delivered': 'Delivered',
+      'cancelled': 'Cancelled'
+    };
+    return labels[status] || status || 'Unknown';
+  };
+
   const getPaymentColor = (status) => {
     const colors = {
-      'Paid': 'success',
-      'Credit': 'warning',
-      'Pending': 'default',
+      'paid': 'success',
+      'partial': 'warning',
+      'pending': 'default'
     };
     return colors[status] || 'default';
   };
+
+  const getPaymentLabel = (status) => {
+    const labels = {
+      'paid': 'Paid',
+      'partial': 'Partial',
+      'pending': 'Pending'
+    };
+    return labels[status] || status || 'Unknown';
+  };
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20">
+        <FiLoader className="w-12 h-12 text-[#111714] animate-spin" />
+        <p className="mt-4 text-[#6B716D]">Loading orders...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20">
+        <FiAlertCircle className="w-12 h-12 text-[#D14343]" />
+        <p className="mt-4 text-[#D14343] font-medium">{error}</p>
+        <Button 
+          variant="outline" 
+          className="mt-4"
+          onClick={fetchOrders}
+        >
+          Try Again
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -201,7 +195,9 @@ const Orders = () => {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-semibold text-[#151A17]">Orders</h1>
-          <p className="text-sm text-[#6B716D] mt-1">All orders across cash, UPI, and store credit</p>
+          <p className="text-sm text-[#6B716D] mt-1">
+            All orders across cash, UPI, and store credit ({orders.length} total)
+          </p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" icon={FiPrinter}>
@@ -275,56 +271,61 @@ const Orders = () => {
               <thead className="bg-[#F6F7F6]">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B716D] uppercase tracking-wider">Order</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B716D] uppercase tracking-wider">Customer</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B716D] uppercase tracking-wider">Retailer</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B716D] uppercase tracking-wider">Date</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B716D] uppercase tracking-wider">KG</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B716D] uppercase tracking-wider">Rate</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B716D] uppercase tracking-wider">Amount</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B716D] uppercase tracking-wider">Payment</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B716D] uppercase tracking-wider">Delivery</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B716D] uppercase tracking-wider">Assigned</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B716D] uppercase tracking-wider">Status</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B716D] uppercase tracking-wider">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E5E8E6]">
                 {filteredOrders.map((order) => (
                   <tr key={order.id} className="hover:bg-[#F6F7F6] transition">
-                    <td className="px-6 py-4">
-                      <span className="text-sm font-medium text-[#151A17]">{order.id}</span>
+                    <td className="px-6 py-4 text-sm font-medium text-[#151A17]">
+                      {order.order_number}
                     </td>
                     <td className="px-6 py-4">
                       <div>
-                        <p className="text-sm font-medium text-[#151A17]">{order.customer}</p>
+                        <p className="text-sm font-medium text-[#151A17]">
+                          {order.shop_name || 'Unknown Retailer'}
+                        </p>
                         <p className="text-xs text-[#6B716D] flex items-center gap-1">
                           <FiPhone className="w-3 h-3" />
-                          {order.phone}
+                          {order.retailer_phone || 'N/A'}
                         </p>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-sm text-[#6B716D]">{order.date}</td>
-                    <td className="px-6 py-4 text-sm text-[#151A17]">{order.kg} kg</td>
-                    <td className="px-6 py-4 text-sm text-[#151A17]">₹{order.rate}</td>
+                    <td className="px-6 py-4 text-sm text-[#6B716D]">
+                      {formatDate(order.created_at)}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-[#151A17]">
+                      {order.kg_ordered} kg
+                    </td>
+                    <td className="px-6 py-4 text-sm text-[#151A17]">
+                      ₹{order.rate_per_kg}
+                    </td>
                     <td className="px-6 py-4 text-sm font-medium text-[#151A17]">
-                      {formatCurrency(order.amount)}
+                      {formatCurrency(order.total_amount)}
                     </td>
                     <td className="px-6 py-4">
-                      <Badge variant={getPaymentColor(order.payment)}>
-                        {order.payment}
+                      <Badge variant={getPaymentColor(order.payment_status)}>
+                        {getPaymentLabel(order.payment_status)}
                       </Badge>
                     </td>
                     <td className="px-6 py-4">
-                      <Badge variant={getDeliveryColor(order.delivery)}>
-                        {order.delivery}
+                      <Badge variant={getStatusColor(order.order_status)}>
+                        {getStatusLabel(order.order_status)}
                       </Badge>
                     </td>
                     <td className="px-6 py-4">
-                      {order.assigned !== '—' ? (
-                        <div>
-                          <p className="text-sm text-[#151A17]">{order.assigned}</p>
-                          <p className="text-xs text-[#6B716D]">{order.vehicle}</p>
-                        </div>
-                      ) : (
-                        <span className="text-sm text-[#6B716D]">—</span>
-                      )}
+                      <Link to={`/admin/orders/${order.id}`}>
+                        <Button variant="ghost" size="sm" icon={FiEye} iconPosition="left">
+                          View
+                        </Button>
+                      </Link>
                     </td>
                   </tr>
                 ))}
@@ -338,6 +339,18 @@ const Orders = () => {
             icon={FiSearch}
           />
         )}
+      </div>
+
+      {/* Refresh Button */}
+      <div className="mt-6 text-center">
+        <Button 
+          variant="outline" 
+          size="sm"
+          onClick={fetchOrders}
+        >
+          <FiLoader className="w-4 h-4 mr-2" />
+          Refresh Orders
+        </Button>
       </div>
     </div>
   );
