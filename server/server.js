@@ -10,6 +10,7 @@ const staffRoutes = require('./routes/staff');
 const vehicleRoutes = require('./routes/vehicles');
 const pricingRoutes = require('./routes/pricing');
 const orderRoutes = require('./routes/orders');
+const deliveryRoutes = require('./routes/deliveries'); // ✅ Add this
 
 dotenv.config();
 
@@ -28,14 +29,12 @@ const allowedOrigins = [
 // Middleware - CORS handles OPTIONS requests automatically
 app.use(cors({
   origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
     
     if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === 'development') {
       callback(null, true);
     } else {
       console.log('❌ CORS blocked for origin:', origin);
-      // Allow all for testing (remove in production)
       callback(null, true);
     }
   },
@@ -43,8 +42,6 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
-
-// ✅ REMOVED: app.options('*', cors()); - This line was causing the error
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -75,7 +72,8 @@ app.use('/api/retailers', retailerRoutes);
 app.use('/api/staff', staffRoutes);
 app.use('/api/vehicles', vehicleRoutes);
 app.use('/api/pricing', pricingRoutes);
-app.use('/api/orders', orderRoutes)
+app.use('/api/orders', orderRoutes);
+app.use('/api/deliveries', deliveryRoutes); // ✅ Add this
 
 // 404 handler
 app.use((req, res) => {
@@ -111,4 +109,9 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`  → http://localhost:${PORT}/api/staff`);
   console.log(`  → http://localhost:${PORT}/api/vehicles`);
   console.log(`  → http://localhost:${PORT}/api/pricing/current`);
+  console.log(`  → http://localhost:${PORT}/api/deliveries/pending`);
+  console.log(`  → http://localhost:${PORT}/api/deliveries/in-progress`);
+  console.log(`  → http://localhost:${PORT}/api/deliveries/drivers`);
+  console.log(`  → http://localhost:${PORT}/api/deliveries/vehicles`);
+  console.log(`  → http://localhost:${PORT}/api/deliveries/cleaners`);
 });
