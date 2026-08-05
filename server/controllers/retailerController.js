@@ -29,7 +29,6 @@ const getAllRetailers = async (req, res) => {
 // Get retailer info for logged-in user (Dashboard)
 const getRetailerInfo = async (req, res) => {
   try {
-    // Use req.user.id from auth middleware
     const userId = req.user.id;
     console.log('📋 Fetching retailer info for user:', userId);
     
@@ -258,10 +257,71 @@ const createRetailer = async (req, res) => {
   }
 };
 
+// ============================================
+// ✅ Get retailers with order statistics (for Customers page)
+// ============================================
+const getRetailerCustomers = async (req, res) => {
+  try {
+    console.log('📋 Fetching retailer customers with statistics...');
+
+    const [customers] = await pool.query(`
+      SELECT 
+        r.id,
+        r.shop_name,
+        r.owner_name,
+        r.phone,
+        r.email,
+        r.address,
+        r.area,
+        r.city,
+        r.status,
+        r.outstanding,
+        r.credit_limit,
+        r.joined_date,
+        -- ✅ Total purchase: SUM of ALL orders EXCEPT cancelled
+        COALESCE(SUM(CASE WHEN o.order_status != 'cancelled' THEN o.total_amount ELSE 0 END), 0) as total_purchase,
+        -- Total orders count (exclude cancelled)
+        COUNT(CASE WHEN o.order_status != 'cancelled' THEN 1 END) as total_orders,
+        -- Pending orders count
+        COALESCE(SUM(CASE WHEN o.order_status = 'pending' THEN 1 ELSE 0 END), 0) as pending_orders,
+        -- Processing orders count
+        COALESCE(SUM(CASE WHEN o.order_status IN ('confirmed', 'processing', 'out_for_delivery') THEN 1 ELSE 0 END), 0) as processing_orders,
+        -- Delivered orders count
+        COALESCE(SUM(CASE WHEN o.order_status = 'delivered' THEN 1 ELSE 0 END), 0) as delivered_orders,
+        -- Last order date
+        MAX(o.order_date) as last_order_date
+      FROM retailers r
+      LEFT JOIN orders o ON r.id = o.retailer_id
+      GROUP BY r.id
+      ORDER BY r.created_at DESC
+    `);
+
+    console.log(`✅ Found ${customers.length} customers`);
+
+    res.status(200).json({
+      success: true,
+      data: customers,
+      count: customers.length
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching retailer customers:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch customers',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+// ============================================
+// EXPORT ALL FUNCTIONS
+// ============================================
 module.exports = {
   getAllRetailers,
   getRetailerInfo,
   getRetailerOrders,
   getRetailerStats,
-  createRetailer
+  createRetailer,
+  getRetailerCustomers
 };

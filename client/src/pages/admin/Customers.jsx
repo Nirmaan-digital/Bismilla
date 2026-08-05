@@ -1,90 +1,71 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   FiUsers, 
   FiPhone,
   FiShoppingBag,
-  FiDownload
+  FiDownload,
+  FiLoader,
+  FiAlertCircle,
+  FiRefreshCw
 } from 'react-icons/fi';
 import Button from '../../components/common/Button';
 import Badge from '../../components/common/Badge';
 import SearchInput from '../../components/common/SearchInput';
 import EmptyState from '../../components/common/EmptyState';
-
-// Mock customer data
-const mockCustomers = [
-  {
-    id: 'CUST-001',
-    name: 'Sharma Chicken Corner',
-    phone: '9876543210',
-    shop: 'Sharma Chicken Corner',
-    address: '12 Market Road, Hyderabad',
-    outstanding: 130000,
-    totalPurchase: 1250000,
-    orders: 45,
-    status: 'Active',
-    joined: '15 Jan 2024',
-  },
-  {
-    id: 'CUST-002',
-    name: 'Khan Poultry',
-    phone: '9876543211',
-    shop: 'Khan Poultry',
-    address: '45 Main Street, Secunderabad',
-    outstanding: 35000,
-    totalPurchase: 850000,
-    orders: 32,
-    status: 'Active',
-    joined: '22 Mar 2024',
-  },
-  {
-    id: 'CUST-003',
-    name: 'Reddy Fresh Meats',
-    phone: '9876543212',
-    shop: 'Reddy Fresh Meats',
-    address: '78 IT Park, Gachibowli',
-    outstanding: 210000,
-    totalPurchase: 2100000,
-    orders: 68,
-    status: 'Active',
-    joined: '10 Jun 2024',
-  },
-  {
-    id: 'CUST-004',
-    name: 'Patel Chicken',
-    phone: '9876543213',
-    shop: 'Patel Chicken',
-    address: '234 Jubilee Hills',
-    outstanding: 0,
-    totalPurchase: 420000,
-    orders: 18,
-    status: 'Active',
-    joined: '05 Sep 2024',
-  },
-  {
-    id: 'CUST-005',
-    name: 'Gupta Poultry House',
-    phone: '9876543214',
-    shop: 'Gupta Poultry House',
-    address: '56 Banjara Hills',
-    outstanding: 175000,
-    totalPurchase: 1560000,
-    orders: 52,
-    status: 'Active',
-    joined: '20 Oct 2024',
-  },
-];
+import api from '../../services/api';
 
 const Customers = () => {
-  const [customers] = useState(mockCustomers);
+  const [customers, setCustomers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('all');
 
+  // Fetch customers from API
+  useEffect(() => {
+    fetchCustomers();
+  }, []);
+
+  const fetchCustomers = async () => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      console.log('📋 Fetching retailer customers...');
+      const response = await api.get('/retailers/customers');
+      console.log('✅ Customers fetched:', response.data);
+      
+      if (response.data.success) {
+        setCustomers(response.data.data || []);
+      } else {
+        setError(response.data.message || 'Failed to fetch customers');
+      }
+    } catch (error) {
+      console.error('❌ Error fetching customers:', error);
+      
+      if (error.response) {
+        setError(error.response.data.message || 'Failed to fetch customers');
+      } else if (error.request) {
+        setError('No response from server. Please check your connection.');
+      } else {
+        setError('An error occurred while fetching customers.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Filter customers based on search and status
   const filteredCustomers = customers.filter(customer => {
-    const matchesSearch = customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          customer.shop.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          customer.phone.includes(searchTerm);
-    const matchesStatus = selectedStatus === 'all' || customer.status === selectedStatus;
+    const matchesSearch = 
+      customer.shop_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      customer.owner_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      customer.phone?.includes(searchTerm) ||
+      customer.email?.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesStatus = selectedStatus === 'all' || 
+                         customer.status?.toLowerCase() === selectedStatus.toLowerCase();
+    
     return matchesSearch && matchesStatus;
   });
 
@@ -95,8 +76,42 @@ const Customers = () => {
       currency: 'INR',
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
-    }).format(amount);
+    }).format(amount || 0);
   };
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20">
+        <FiLoader className="w-12 h-12 text-[#111714] animate-spin" />
+        <p className="mt-4 text-[#6B716D]">Loading customers...</p>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20">
+        <FiAlertCircle className="w-12 h-12 text-[#D14343]" />
+        <p className="mt-4 text-[#D14343] font-medium">{error}</p>
+        <div className="flex gap-3 mt-4">
+          <Button 
+            variant="outline" 
+            onClick={fetchCustomers}
+          >
+            <FiRefreshCw className="w-4 h-4 mr-2" />
+            Try Again
+          </Button>
+          <Button 
+            onClick={() => window.location.reload()}
+          >
+            Refresh Page
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -104,11 +119,24 @@ const Customers = () => {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-semibold text-[#151A17]">Customers</h1>
-          <p className="text-sm text-[#6B716D] mt-1">{customers.length} retailers on the network</p>
+          <p className="text-sm text-[#6B716D] mt-1">
+            {customers.length} retailers on the network
+          </p>
         </div>
-        <Button variant="outline" icon={FiDownload}>
-          Export
-        </Button>
+        <div className="flex gap-2">
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={fetchCustomers}
+          >
+            <FiRefreshCw className="w-4 h-4 mr-2" />
+            Refresh
+          </Button>
+          <Button variant="outline">
+            <FiDownload className="w-4 h-4 mr-2" />
+            Export
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -128,8 +156,8 @@ const Customers = () => {
               className="px-4 py-2.5 border border-[#E5E8E6] rounded-lg bg-white focus:ring-2 focus:ring-[#111714] focus:border-transparent outline-none transition"
             >
               <option value="all">All Status</option>
-              <option value="Active">Active</option>
-              <option value="Inactive">Inactive</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
             </select>
           </div>
         </div>
@@ -155,8 +183,11 @@ const Customers = () => {
                   <tr key={customer.id} className="hover:bg-[#F6F7F6] transition">
                     <td className="px-6 py-4">
                       <div>
-                        <p className="text-sm font-medium text-[#151A17]">{customer.name}</p>
-                        <p className="text-xs text-[#6B716D]">{customer.shop}</p>
+                        <p className="text-sm font-medium text-[#151A17]">{customer.shop_name}</p>
+                        <p className="text-xs text-[#6B716D]">{customer.owner_name}</p>
+                        {customer.city && (
+                          <p className="text-xs text-[#6B716D] mt-0.5">{customer.city}</p>
+                        )}
                       </div>
                     </td>
                     <td className="px-6 py-4">
@@ -167,23 +198,23 @@ const Customers = () => {
                     </td>
                     <td className="px-6 py-4">
                       <span className={`text-sm font-medium ${
-                        customer.outstanding > 0 ? 'text-[#D14343]' : 'text-[#16834B]'
+                        parseFloat(customer.outstanding) > 0 ? 'text-[#D14343]' : 'text-[#16834B]'
                       }`}>
                         {formatCurrency(customer.outstanding)}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-sm font-medium text-[#151A17]">
-                      {formatCurrency(customer.totalPurchase)}
+                      {formatCurrency(customer.total_purchase)}
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
                         <FiShoppingBag className="w-3 h-3 text-[#6B716D]" />
-                        <span className="text-sm text-[#151A17]">{customer.orders}</span>
+                        <span className="text-sm text-[#151A17]">{customer.total_orders || 0}</span>
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <Badge variant={customer.status === 'Active' ? 'success' : 'default'}>
-                        {customer.status}
+                      <Badge variant={customer.status === 'active' ? 'success' : 'default'}>
+                        {customer.status === 'active' ? 'Active' : 'Inactive'}
                       </Badge>
                     </td>
                   </tr>
@@ -193,8 +224,10 @@ const Customers = () => {
           </div>
         ) : (
           <EmptyState
-            title="No customers found"
-            description="Try adjusting your search or filter criteria."
+            title={searchTerm || selectedStatus !== 'all' ? "No customers found" : "No customers yet"}
+            description={searchTerm || selectedStatus !== 'all' 
+              ? "Try adjusting your search or filter criteria."
+              : "Add your first retailer to get started."}
             icon={FiUsers}
           />
         )}

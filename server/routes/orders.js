@@ -29,4 +29,11 @@ router.get('/:id', orderController.getOrderById);
 // Update order status (Admin only)
 router.put('/:id/status', orderController.updateOrderStatus);
 
+// ============================================
+// PAYMENT ROUTES
+// ============================================
+
+// Record a payment against outstanding bills (Admin only)
+router.post('/payments', orderController.recordPayment);
+
 module.exports = router;

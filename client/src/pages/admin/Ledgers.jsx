@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   FiFileText, 
   FiUser, 
@@ -13,162 +13,162 @@ import {
   FiTrendingDown,
   FiCalendar,
   FiClock,
-  FiArrowRight
+  FiArrowRight,
+  FiLoader,
+  FiAlertCircle
 } from 'react-icons/fi';
 import Button from '../../components/common/Button';
 import Badge from '../../components/common/Badge';
 import Modal from '../../components/common/Modal';
 import SearchInput from '../../components/common/SearchInput';
 import EmptyState from '../../components/common/EmptyState';
-
-// Mock retailers with ledger data
-const mockRetailers = [
-  {
-    id: 'RET-001',
-    name: 'Sharma Chicken Corner',
-    phone: '9876543210',
-    shop: 'Sharma Chicken Corner',
-    creditLimit: 200000,
-    outstanding: 130000,
-    totalPurchase: 1250000,
-    totalPayment: 1120000,
-    balance: 130000,
-    transactions: [
-      { id: 'TRX-001', type: 'debit', amount: 24600, description: 'Order ORD-1042', date: '24 Jul 2026', billId: 'ORD-1042' },
-      { id: 'TRX-002', type: 'credit', amount: 10000, description: 'Payment Received - Cash', date: '24 Jul 2026', billId: 'ORD-1042' },
-      { id: 'TRX-003', type: 'debit', amount: 34200, description: 'Order ORD-1005', date: '23 Jul 2026', billId: 'ORD-1005' },
-      { id: 'TRX-004', type: 'credit', amount: 20000, description: 'Payment Received - UPI', date: '22 Jul 2026', billId: 'ORD-1005' },
-      { id: 'TRX-005', type: 'debit', amount: 42680, description: 'Order ORD-1001', date: '21 Jul 2026', billId: 'ORD-1001' },
-    ]
-  },
-  {
-    id: 'RET-002',
-    name: 'Khan Poultry',
-    phone: '9876543211',
-    shop: 'Khan Poultry',
-    creditLimit: 150000,
-    outstanding: 35000,
-    totalPurchase: 850000,
-    totalPayment: 815000,
-    balance: 35000,
-    transactions: [
-      { id: 'TRX-006', type: 'debit', amount: 28200, description: 'Order ORD-1002', date: '24 Jul 2026', billId: 'ORD-1002' },
-      { id: 'TRX-007', type: 'credit', amount: 28200, description: 'Payment Received - UPI', date: '24 Jul 2026', billId: 'ORD-1002' },
-      { id: 'TRX-008', type: 'debit', amount: 38800, description: 'Order ORD-1007', date: '21 Jul 2026', billId: 'ORD-1007' },
-    ]
-  },
-  {
-    id: 'RET-003',
-    name: 'Reddy Fresh Meats',
-    phone: '9876543212',
-    shop: 'Reddy Fresh Meats',
-    creditLimit: 300000,
-    outstanding: 210000,
-    totalPurchase: 2100000,
-    totalPayment: 1890000,
-    balance: 210000,
-    transactions: [
-      { id: 'TRX-009', type: 'debit', amount: 77600, description: 'Order ORD-1003', date: '24 Jul 2026', billId: 'ORD-1003' },
-      { id: 'TRX-010', type: 'debit', amount: 94000, description: 'Order ORD-1008', date: '24 Jul 2026', billId: 'ORD-1008' },
-      { id: 'TRX-011', type: 'credit', amount: 50000, description: 'Payment Received - Cash', date: '23 Jul 2026', billId: 'ORD-1003' },
-    ]
-  },
-  {
-    id: 'RET-004',
-    name: 'Patel Chicken',
-    phone: '9876543213',
-    shop: 'Patel Chicken',
-    creditLimit: 100000,
-    outstanding: 0,
-    totalPurchase: 420000,
-    totalPayment: 420000,
-    balance: 0,
-    transactions: [
-      { id: 'TRX-012', type: 'debit', amount: 22560, description: 'Order ORD-1006', date: '22 Jul 2026', billId: 'ORD-1006' },
-      { id: 'TRX-013', type: 'credit', amount: 22560, description: 'Payment Received - Cash', date: '22 Jul 2026', billId: 'ORD-1006' },
-    ]
-  },
-  {
-    id: 'RET-005',
-    name: 'Gupta Poultry House',
-    phone: '9876543214',
-    shop: 'Gupta Poultry House',
-    creditLimit: 250000,
-    outstanding: 175000,
-    totalPurchase: 1560000,
-    totalPayment: 1385000,
-    balance: 175000,
-    transactions: [
-      { id: 'TRX-014', type: 'debit', amount: 56400, description: 'Order ORD-1004', date: '23 Jul 2026', billId: 'ORD-1004' },
-      { id: 'TRX-015', type: 'credit', amount: 56400, description: 'Payment Received - UPI', date: '23 Jul 2026', billId: 'ORD-1004' },
-    ]
-  },
-];
+import api from '../../services/api';
 
 const Ledgers = () => {
-  const [retailers, setRetailers] = useState(mockRetailers);
+  const [retailers, setRetailers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRetailer, setSelectedRetailer] = useState(null);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('Cash');
+  const [submitting, setSubmitting] = useState(false);
 
-  // Filter retailers
-  const filteredRetailers = retailers.filter(r =>
-    r.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    r.shop.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    r.phone.includes(searchTerm)
-  );
+  // ✅ Fetch retailers with their ledger data
+  useEffect(() => {
+    fetchRetailers();
+  }, []);
 
-  // Open retailer ledger
-  const openRetailerLedger = (retailer) => {
-    setSelectedRetailer(retailer);
+  const fetchRetailers = async () => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      console.log('📋 Fetching retailers for ledger...');
+      const response = await api.get('/retailers/customers');
+      console.log('✅ Retailers fetched:', response.data);
+      
+      if (response.data.success) {
+        // Transform data for ledger view
+        const transformedData = response.data.data.map(retailer => ({
+          id: retailer.id,
+          name: retailer.shop_name,
+          phone: retailer.phone,
+          shop: retailer.shop_name,
+          owner: retailer.owner_name,
+          creditLimit: parseFloat(retailer.credit_limit) || 0,
+          outstanding: parseFloat(retailer.outstanding) || 0,
+          totalPurchase: parseFloat(retailer.total_purchase) || 0,
+          totalPaid: parseFloat(retailer.total_purchase) - parseFloat(retailer.outstanding) || 0,
+          balance: parseFloat(retailer.outstanding) || 0,
+          transactions: [], // Will be loaded when viewing ledger
+          _raw: retailer // Keep raw data for reference
+        }));
+        setRetailers(transformedData);
+      } else {
+        setError(response.data.message || 'Failed to fetch retailers');
+      }
+    } catch (error) {
+      console.error('❌ Error fetching retailers:', error);
+      
+      if (error.response) {
+        setError(error.response.data.message || 'Failed to fetch retailers');
+      } else if (error.request) {
+        setError('No response from server. Please check your connection.');
+      } else {
+        setError('An error occurred while fetching retailers.');
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Close retailer ledger
+  // ✅ Fetch transactions for a specific retailer
+  const fetchRetailerTransactions = async (retailerId) => {
+    try {
+      console.log(`📋 Fetching transactions for retailer ${retailerId}...`);
+      
+      // Ensure retailerId is an integer to prevent backend query issues
+      const id = parseInt(retailerId);
+      const response = await api.get(`/orders?retailer_id=${id}`);
+      
+      // Get orders for this retailer
+      const orders = response.data.data || [];
+      
+      // Transform orders into transactions
+      const transactions = orders.map(order => ({
+        id: `TRX-${order.id}`,
+        type: 'debit',
+        amount: parseFloat(order.total_amount),
+        description: `Order ${order.order_number}`,
+        date: new Date(order.order_date).toLocaleDateString('en-IN', {
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric'
+        }),
+        billId: order.order_number,
+        status: order.order_status,
+        paidAmount: parseFloat(order.paid_amount) || 0,
+        balance: parseFloat(order.balance) || 0
+      }));
+
+      // Add payment transactions if they exist (from payments table)
+      // For now, we'll just use orders
+      
+      return transactions;
+    } catch (error) {
+      console.error('❌ Error fetching transactions:', error);
+      return [];
+    }
+  };
+
+  // ✅ Open retailer ledger with transactions
+  const openRetailerLedger = async (retailer) => {
+    setSelectedRetailer(retailer);
+    
+    // Fetch transactions for this retailer
+    const transactions = await fetchRetailerTransactions(retailer.id);
+    setSelectedRetailer(prev => ({
+      ...prev,
+      transactions: transactions
+    }));
+  };
+
   const closeRetailerLedger = () => {
     setSelectedRetailer(null);
   };
 
-  // Open payment modal
   const openPaymentModal = () => {
     setIsPaymentModalOpen(true);
     setPaymentAmount('');
     setPaymentMethod('Cash');
   };
 
-  // Get unpaid bills with FIFO order (oldest first)
+  // ✅ Get unpaid bills with FIFO order (oldest first)
   const getUnpaidBills = () => {
-    if (!selectedRetailer) return [];
+    if (!selectedRetailer || !selectedRetailer.transactions) return [];
     
-    // Get all debit transactions (orders)
-    const debitTransactions = selectedRetailer.transactions.filter(t => t.type === 'debit');
+    // Get all debit transactions (orders) that are not fully paid
+    const debitTransactions = selectedRetailer.transactions.filter(t => 
+      t.type === 'debit' && t.balance > 0
+    );
     
-    // Calculate balance for each bill
-    const bills = debitTransactions.map(bill => {
-      const payments = selectedRetailer.transactions.filter(
-        t => t.billId === bill.billId && t.type === 'credit'
-      );
-      const totalPaid = payments.reduce((sum, t) => sum + t.amount, 0);
-      const balance = bill.amount - totalPaid;
-      
-      return {
+    // Sort by date (oldest first for FIFO)
+    return debitTransactions
+      .sort((a, b) => new Date(a.date) - new Date(b.date))
+      .map(bill => ({
         billId: bill.billId,
         description: bill.description,
         amount: bill.amount,
-        paid: totalPaid,
-        balance: balance,
+        paid: bill.paidAmount || 0,
+        balance: bill.balance,
         date: bill.date,
-        // Sort by date (oldest first for FIFO)
-        sortDate: new Date(bill.date.split(' ').join(' ')),
-      };
-    }).filter(bill => bill.balance > 0)
-    .sort((a, b) => a.sortDate - b.sortDate); // Oldest first
-
-    return bills;
+        sortDate: new Date(bill.date)
+      }));
   };
 
-  // Auto-calculate payment allocation based on amount
+  // ✅ Auto-calculate payment allocation based on amount
   const getPaymentAllocation = () => {
     const amount = parseFloat(paymentAmount);
     if (!amount || amount <= 0 || !selectedRetailer) return [];
@@ -193,7 +193,6 @@ const Ledgers = () => {
       remainingAmount -= payAmount;
     }
 
-    // If there's remaining amount that couldn't be allocated
     if (remainingAmount > 0) {
       allocation.push({
         billId: 'EXCESS',
@@ -208,8 +207,8 @@ const Ledgers = () => {
     return allocation;
   };
 
-  // Handle payment submission with automatic allocation
-  const handlePaymentSubmit = () => {
+  // ✅ Handle payment submission (UPDATED TO CONNECT TO BACKEND)
+  const handlePaymentSubmit = async () => {
     if (!paymentAmount || parseFloat(paymentAmount) <= 0) {
       alert('Please enter a valid amount');
       return;
@@ -223,7 +222,6 @@ const Ledgers = () => {
       return;
     }
 
-    // Calculate total outstanding
     const totalOutstanding = unpaidBills.reduce((sum, bill) => sum + bill.balance, 0);
     
     if (amount > totalOutstanding) {
@@ -231,51 +229,93 @@ const Ledgers = () => {
       return;
     }
 
-    // Create payment transactions for each bill
-    let remainingAmount = amount;
-    const newTransactions = [];
-    let paymentDescription = `Payment Received - ${paymentMethod}`;
+    setSubmitting(true);
 
-    for (const bill of unpaidBills) {
-      if (remainingAmount <= 0) break;
+    try {
+      // 1. SEND DATA TO THE BACKEND
+      const payload = {
+        retailer_id: selectedRetailer.id,
+        amount: amount,
+        payment_method: paymentMethod,
+        // Map the allocation to a clean array of bill IDs and amounts for the backend
+        bill_allocations: paymentAllocation.map(alloc => ({
+          bill_id: alloc.billId,
+          amount_paid: alloc.amountToPay
+        })).filter(alloc => alloc.bill_id !== 'EXCESS') // Remove excess placeholder
+      };
+
+      console.log('📤 Sending payment to server:', payload);
       
-      const payAmount = Math.min(remainingAmount, bill.balance);
+      // ✅ UPDATED: Changed endpoint to '/orders/payments' to match your server.js mounting
+      const response = await api.post('/orders/payments', payload); 
       
-      newTransactions.push({
-        id: `TRX-${Date.now()}-${bill.billId}`,
+      // Check if the backend returned a success
+      if (!response.data.success) {
+        throw new Error(response.data.message || 'Failed to record payment');
+      }
+
+      // 2. OPTIMISTIC UI UPDATE (Update local state immediately for UI responsiveness)
+      let remainingAmount = amount;
+      const updatedTransactions = [...selectedRetailer.transactions];
+      // Ensure outstanding never goes negative due to a local math error
+      let updatedOutstanding = Math.max(0, selectedRetailer.outstanding - amount);
+
+      // Update each bill's balance in the local state array
+      for (let i = 0; i < updatedTransactions.length; i++) {
+        if (remainingAmount <= 0) break;
+        
+        const t = updatedTransactions[i];
+        if (t.type === 'debit' && t.balance > 0) {
+          const payAmount = Math.min(remainingAmount, t.balance);
+          t.balance = t.balance - payAmount;
+          t.paidAmount = (t.paidAmount || 0) + payAmount;
+          remainingAmount -= payAmount;
+        }
+      }
+
+      // Add a credit (payment) transaction locally so it shows immediately in history
+      updatedTransactions.push({
+        id: `PAY-${Date.now()}`,
         type: 'credit',
-        amount: payAmount,
-        description: paymentDescription,
+        amount: amount,
+        description: `Payment Received - ${paymentMethod}`,
         date: new Date().toLocaleDateString('en-IN', {
           day: '2-digit',
           month: 'short',
           year: 'numeric'
         }),
-        billId: bill.billId,
+        billId: 'PAYMENT',
+        paidAmount: 0,
+        balance: 0
       });
-      
-      remainingAmount -= payAmount;
+
+      // Construct the updated retailer object
+      const updatedRetailer = {
+        ...selectedRetailer,
+        transactions: updatedTransactions,
+        outstanding: updatedOutstanding,
+        totalPaid: (selectedRetailer.totalPaid || 0) + amount,
+        balance: updatedOutstanding
+      };
+
+      // Update local component state
+      setSelectedRetailer(updatedRetailer);
+      setRetailers(prev => prev.map(r => 
+        r.id === updatedRetailer.id ? updatedRetailer : r
+      ));
+
+      setIsPaymentModalOpen(false);
+      alert(`✅ Payment of ₹${amount.toLocaleString()} recorded successfully!`);
+
+      // 3. REFRESH DATA FROM SERVER (Crucial step to ensure UI matches DB)
+      await fetchRetailers(); 
+
+    } catch (error) {
+      console.error('❌ Error recording payment:', error);
+      alert(error.message || 'Failed to record payment. Please try again.');
+    } finally {
+      setSubmitting(false);
     }
-
-    // Update retailer data with all new transactions
-    const updatedRetailer = {
-      ...selectedRetailer,
-      transactions: [...selectedRetailer.transactions, ...newTransactions],
-      totalPayment: selectedRetailer.totalPayment + amount,
-      outstanding: selectedRetailer.outstanding - amount,
-      balance: selectedRetailer.balance - amount,
-    };
-
-    // Update retailers list
-    const updatedRetailers = retailers.map(r =>
-      r.id === selectedRetailer.id ? updatedRetailer : r
-    );
-
-    setRetailers(updatedRetailers);
-    setSelectedRetailer(updatedRetailer);
-    setIsPaymentModalOpen(false);
-    
-    alert(`Payment of ₹${amount.toLocaleString()} recorded successfully against ${newTransactions.length} bill(s)!`);
   };
 
   // Format currency
@@ -285,7 +325,7 @@ const Ledgers = () => {
       currency: 'INR',
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
-    }).format(amount);
+    }).format(amount || 0);
   };
 
   // Get payment allocation for display
@@ -297,6 +337,41 @@ const Ledgers = () => {
     return unpaidBills.reduce((sum, bill) => sum + bill.balance, 0);
   };
 
+  // Filter retailers
+  const filteredRetailers = retailers.filter(r =>
+    r.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    r.shop?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    r.phone?.includes(searchTerm) ||
+    r.owner?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20">
+        <FiLoader className="w-12 h-12 text-[#111714] animate-spin" />
+        <p className="mt-4 text-[#6B716D]">Loading ledgers...</p>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20">
+        <FiAlertCircle className="w-12 h-12 text-[#D14343]" />
+        <p className="mt-4 text-[#D14343] font-medium">{error}</p>
+        <Button 
+          variant="outline" 
+          className="mt-4"
+          onClick={fetchRetailers}
+        >
+          Try Again
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div>
       {/* Header */}
@@ -305,6 +380,14 @@ const Ledgers = () => {
           <h1 className="text-2xl font-semibold text-[#151A17]">Ledgers</h1>
           <p className="text-sm text-[#6B716D] mt-1">Manage retailer accounts and payments</p>
         </div>
+        <Button 
+          variant="outline" 
+          size="sm"
+          onClick={fetchRetailers}
+        >
+          <FiLoader className="w-4 h-4 mr-2" />
+          Refresh
+        </Button>
       </div>
 
       {/* Search */}
@@ -336,15 +419,16 @@ const Ledgers = () => {
                   <tr key={retailer.id} className="hover:bg-[#F6F7F6] transition">
                     <td className="px-6 py-4">
                       <div>
-                        <p className="text-sm font-medium text-[#151A17]">{retailer.name}</p>
+                        <p className="text-sm font-medium text-[#151A17]">{retailer.shop}</p>
                         <p className="text-xs text-[#6B716D]">{retailer.phone}</p>
+                        <p className="text-xs text-[#6B716D]">Owner: {retailer.owner}</p>
                       </div>
                     </td>
                     <td className="px-6 py-4 text-sm font-medium text-[#151A17]">
                       {formatCurrency(retailer.totalPurchase)}
                     </td>
                     <td className="px-6 py-4 text-sm font-medium text-[#16834B]">
-                      {formatCurrency(retailer.totalPayment)}
+                      {formatCurrency(retailer.totalPaid)}
                     </td>
                     <td className="px-6 py-4">
                       <span className={`text-sm font-medium ${
@@ -382,7 +466,7 @@ const Ledgers = () => {
       <Modal
         isOpen={!!selectedRetailer}
         onClose={closeRetailerLedger}
-        title={selectedRetailer?.name}
+        title={selectedRetailer?.name || selectedRetailer?.shop}
         description={`${selectedRetailer?.shop} • ${selectedRetailer?.phone}`}
         size="xl"
         footer={
@@ -410,7 +494,7 @@ const Ledgers = () => {
               <div className="bg-[#F6F7F6] rounded-lg p-4 text-center">
                 <p className="text-xs text-[#6B716D]">Total Paid</p>
                 <p className="text-xl font-semibold text-[#16834B]">
-                  {formatCurrency(selectedRetailer.totalPayment)}
+                  {formatCurrency(selectedRetailer.totalPaid)}
                 </p>
               </div>
               <div className="bg-[#F6F7F6] rounded-lg p-4 text-center">
@@ -423,7 +507,7 @@ const Ledgers = () => {
               </div>
             </div>
 
-            {/* Unpaid Bills (FIFO Order with Dates) */}
+            {/* Unpaid Bills */}
             {getUnpaidBills().length > 0 && (
               <div>
                 <h4 className="font-medium text-[#151A17] mb-3">Unpaid Bills (Oldest First)</h4>
@@ -435,7 +519,6 @@ const Ledgers = () => {
                         <th className="px-4 py-2 text-left text-xs font-semibold text-[#6B716D] uppercase tracking-wider">Description</th>
                         <th className="px-4 py-2 text-left text-xs font-semibold text-[#6B716D] uppercase tracking-wider">Date</th>
                         <th className="px-4 py-2 text-right text-xs font-semibold text-[#6B716D] uppercase tracking-wider">Total</th>
-                        <th className="px-4 py-2 text-right text-xs font-semibold text-[#6B716D] uppercase tracking-wider">Paid</th>
                         <th className="px-4 py-2 text-right text-xs font-semibold text-[#6B716D] uppercase tracking-wider">Balance</th>
                       </tr>
                     </thead>
@@ -444,17 +527,9 @@ const Ledgers = () => {
                         <tr key={bill.billId} className="hover:bg-[#F6F7F6] transition">
                           <td className="px-4 py-2 text-sm text-[#6B716D]">{bill.billId}</td>
                           <td className="px-4 py-2 text-sm text-[#151A17]">{bill.description}</td>
-                          <td className="px-4 py-2 text-sm text-[#6B716D]">
-                            <div className="flex items-center gap-1">
-                              <FiCalendar className="w-3 h-3" />
-                              {bill.date}
-                            </div>
-                          </td>
+                          <td className="px-4 py-2 text-sm text-[#6B716D]">{bill.date}</td>
                           <td className="px-4 py-2 text-right text-sm font-medium text-[#151A17]">
                             {formatCurrency(bill.amount)}
-                          </td>
-                          <td className="px-4 py-2 text-right text-sm font-medium text-[#16834B]">
-                            {formatCurrency(bill.paid)}
                           </td>
                           <td className="px-4 py-2 text-right text-sm font-medium text-[#D14343]">
                             {formatCurrency(bill.balance)}
@@ -479,10 +554,11 @@ const Ledgers = () => {
                       <th className="px-4 py-2 text-left text-xs font-semibold text-[#6B716D] uppercase tracking-wider">Date</th>
                       <th className="px-4 py-2 text-right text-xs font-semibold text-[#6B716D] uppercase tracking-wider">Debit</th>
                       <th className="px-4 py-2 text-right text-xs font-semibold text-[#6B716D] uppercase tracking-wider">Credit</th>
+                      <th className="px-4 py-2 text-right text-xs font-semibold text-[#6B716D] uppercase tracking-wider">Balance</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#E5E8E6]">
-                    {selectedRetailer.transactions.map((transaction) => (
+                    {selectedRetailer.transactions?.map((transaction) => (
                       <tr key={transaction.id} className="hover:bg-[#F6F7F6] transition">
                         <td className="px-4 py-2 text-sm text-[#6B716D]">
                           {transaction.billId || '-'}
@@ -499,6 +575,9 @@ const Ledgers = () => {
                         <td className="px-4 py-2 text-right text-sm font-medium text-[#16834B]">
                           {transaction.type === 'credit' ? formatCurrency(transaction.amount) : '-'}
                         </td>
+                        <td className="px-4 py-2 text-right text-sm font-medium">
+                          {transaction.type === 'debit' ? formatCurrency(transaction.balance || 0) : '-'}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -509,26 +588,41 @@ const Ledgers = () => {
         )}
       </Modal>
 
-      {/* Record Payment Modal with Auto Allocation */}
+      {/* Record Payment Modal */}
       <Modal
         isOpen={isPaymentModalOpen}
         onClose={() => setIsPaymentModalOpen(false)}
         title="Record Payment"
-        description={`Enter payment details for ${selectedRetailer?.name}`}
+        description={`Enter payment details for ${selectedRetailer?.name || selectedRetailer?.shop}`}
         size="lg"
         footer={
-          <>
+          <div className="flex flex-col sm:flex-row gap-3 w-full">
             <Button 
               variant="outline" 
               onClick={() => setIsPaymentModalOpen(false)}
+              disabled={submitting}
+              className="flex-1"
             >
               Cancel
             </Button>
-            <Button onClick={handlePaymentSubmit}>
-              <FiCheck className="w-4 h-4 mr-2" />
-              Record Payment
+            <Button 
+              onClick={handlePaymentSubmit}
+              disabled={submitting || !paymentAmount || parseFloat(paymentAmount) <= 0}
+              className="flex-1"
+            >
+              {submitting ? (
+                <>
+                  <FiLoader className="w-4 h-4 mr-2 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <FiCheck className="w-4 h-4 mr-2" />
+                  Record Payment
+                </>
+              )}
             </Button>
-          </>
+          </div>
         }
       >
         <div className="space-y-4">
@@ -575,9 +669,9 @@ const Ledgers = () => {
           {paymentAmount && parseFloat(paymentAmount) > 0 && (
             <div>
               <h4 className="text-sm font-medium text-[#151A17] mb-2">Payment Allocation</h4>
-              <div className="border border-[#E5E8E6] rounded-lg overflow-hidden">
+              <div className="border border-[#E5E8E6] rounded-lg overflow-hidden max-h-48 overflow-y-auto">
                 <table className="w-full">
-                  <thead className="bg-[#F6F7F6]">
+                  <thead className="bg-[#F6F7F6] sticky top-0">
                     <tr>
                       <th className="px-3 py-2 text-left text-xs font-semibold text-[#6B716D] uppercase tracking-wider">Bill</th>
                       <th className="px-3 py-2 text-left text-xs font-semibold text-[#6B716D] uppercase tracking-wider">Date</th>
@@ -627,7 +721,7 @@ const Ledgers = () => {
             <div className="space-y-1 text-sm">
               <div className="flex justify-between">
                 <span className="text-[#6B716D]">Customer</span>
-                <span className="font-medium text-[#151A17]">{selectedRetailer?.name}</span>
+                <span className="font-medium text-[#151A17]">{selectedRetailer?.name || selectedRetailer?.shop}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-[#6B716D]">Total Purchase</span>
@@ -638,7 +732,7 @@ const Ledgers = () => {
               <div className="flex justify-between">
                 <span className="text-[#6B716D]">Total Paid</span>
                 <span className="font-medium text-[#16834B]">
-                  {formatCurrency(selectedRetailer?.totalPayment || 0)}
+                  {formatCurrency(selectedRetailer?.totalPaid || 0)}
                 </span>
               </div>
               <div className="flex justify-between">
@@ -651,7 +745,7 @@ const Ledgers = () => {
                 <div className="flex justify-between border-t border-[#16834B]/30 pt-1 mt-1">
                   <span className="text-[#6B716D] font-medium">New Balance</span>
                   <span className="font-medium text-[#16834B]">
-                    {formatCurrency((selectedRetailer?.outstanding || 0) - parseFloat(paymentAmount))}
+                    {formatCurrency(Math.max(0, (selectedRetailer?.outstanding || 0) - parseFloat(paymentAmount)))}
                   </span>
                 </div>
               )}
