@@ -58,7 +58,7 @@ const createTables = async () => {
     console.log('✅ Staff table ready');
 
     // ============================================
-    // 3. PRICING TABLE
+    // 3. PRICING TABLE (Global Price)
     // ============================================
     await pool.query(`
       CREATE TABLE IF NOT EXISTS pricing (
@@ -362,7 +362,7 @@ const createTables = async () => {
     console.log('✅ Payments table ready');
 
     // ============================================
-    // 12. LEDGER TABLE
+    // 12. LEDGER TABLE (Newly Added)
     // ============================================
     await pool.query(`
       CREATE TABLE IF NOT EXISTS ledger (
@@ -404,7 +404,7 @@ const createTables = async () => {
     console.log('✅ Expenses table ready');
 
     // ============================================
-    // 14. RETAILER PRICING TABLE
+    // 14. RETAILER PRICING TABLE (Newly Added for Custom Prices)
     // ============================================
     await pool.query(`
       CREATE TABLE IF NOT EXISTS retailer_pricing (
@@ -423,20 +423,34 @@ const createTables = async () => {
     // DEFAULT DATA
     // ============================================
 
-    await pool.query(`
-      INSERT IGNORE INTO users (name, phone, password, role, status) 
-      VALUES ('Mohammed Admin', '9999999999', '$2a$10$YourHashedPasswordHere', 'admin', 'active')
-    `);
-    console.log('✅ Default admin user ready');
+    // Check if admin user exists before inserting
+    const [adminCheck] = await pool.query(`SELECT id FROM users WHERE phone = '9999999999'`);
+    if (adminCheck.length === 0) {
+      await pool.query(`
+        INSERT INTO users (name, phone, password, role, status) 
+        VALUES ('Mohammed Admin', '9999999999', '$2a$10$YourHashedPasswordHere', 'admin', 'active')
+      `);
+      console.log('✅ Default admin user created');
+    } else {
+      console.log('✅ Default admin user already exists');
+    }
 
-    await pool.query(`
-      INSERT IGNORE INTO pricing (default_price_per_kg, updated_by) 
-      VALUES (188.00, 'System')
-    `);
-    console.log('✅ Default pricing ready');
+    // Insert default global pricing
+    const [pricingCheck] = await pool.query(`SELECT id FROM pricing LIMIT 1`);
+    if (pricingCheck.length === 0) {
+      await pool.query(`
+        INSERT INTO pricing (default_price_per_kg, updated_by) 
+        VALUES (188.00, 'System')
+      `);
+      console.log('✅ Default pricing created');
+    } else {
+      console.log('✅ Default pricing already exists');
+    }
 
     console.log('\n🎉 All tables are ready!');
     console.log('📊 Orders table has been updated with all required columns');
+    console.log('💰 Retailer Pricing table added for custom per-user prices');
+    console.log('📒 Ledger table added for financial tracking');
     
     // Show final table structure
     const [finalColumns] = await pool.query('DESCRIBE orders');

@@ -10,7 +10,11 @@ const staffRoutes = require('./routes/staff');
 const vehicleRoutes = require('./routes/vehicles');
 const pricingRoutes = require('./routes/pricing');
 const orderRoutes = require('./routes/orders');
-const deliveryRoutes = require('./routes/deliveries'); // ✅ Add this
+const deliveryRoutes = require('./routes/deliveries');
+const reportRoutes = require('./routes/reports');
+const settingsRoutes = require('./routes/settings');
+const driverRoutes = require('./routes/driver');
+const cashVerificationRoutes = require('./routes/cashVerification'); // ✅ ADDED: Cash Verification routes
 
 dotenv.config();
 
@@ -73,7 +77,11 @@ app.use('/api/staff', staffRoutes);
 app.use('/api/vehicles', vehicleRoutes);
 app.use('/api/pricing', pricingRoutes);
 app.use('/api/orders', orderRoutes);
-app.use('/api/deliveries', deliveryRoutes); // ✅ Add this
+app.use('/api/deliveries', deliveryRoutes);
+app.use('/api/reports', reportRoutes);
+app.use('/api/settings', settingsRoutes);
+app.use('/api/driver', driverRoutes);
+app.use('/api/cash-verification', cashVerificationRoutes); // ✅ MOUNTED: Cash Verification routes
 
 // 404 handler
 app.use((req, res) => {
@@ -114,4 +122,11 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`  → http://localhost:${PORT}/api/deliveries/drivers`);
   console.log(`  → http://localhost:${PORT}/api/deliveries/vehicles`);
   console.log(`  → http://localhost:${PORT}/api/deliveries/cleaners`);
+  console.log(`  → http://localhost:${PORT}/api/reports/data`);
+  console.log(`  → http://localhost:${PORT}/api/reports/export`);
+  console.log(`  → http://localhost:${PORT}/api/driver/dashboard`);
+  console.log(`  → http://localhost:${PORT}/api/driver/trip/status`);
+  console.log(`  → http://localhost:${PORT}/api/cash-verification/pending`); // ✅ Added
+  console.log(`  → http://localhost:${PORT}/api/cash-verification/verified`); // ✅ Added
+  console.log(`  → http://localhost:${PORT}/api/cash-verification/verify`); // ✅ Added
 });

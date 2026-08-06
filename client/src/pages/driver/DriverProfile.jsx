@@ -1,22 +1,97 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   FiUser, 
   FiPhone, 
   FiTruck,
   FiCalendar,
-  FiCheckCircle
+  FiCheckCircle,
+  FiLoader,
+  FiAlertCircle
 } from 'react-icons/fi';
 import Badge from '../../components/common/Badge';
+import Button from '../../components/common/Button';
+import api from '../../services/api';
 
 const DriverProfile = () => {
-  const [profile] = useState({
-    name: 'Sameer Khan',
-    phone: '9876543220',
-    vehicleNumber: 'KA-01-AB-1234',
-    vehicleType: 'Mahindra Bolero',
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [profile, setProfile] = useState({
+    name: '',
+    phone: '',
+    vehicle_number: '',
+    vehicle_name: '',
+    vehicle_type: '',
     status: 'Available',
-    joined: '01 Jan 2024',
+    joined: '',
   });
+
+  // ✅ Fetch Real Data
+  useEffect(() => {
+    const fetchProfile = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await api.get('/driver/profile');
+        if (response.data.success) {
+          const data = response.data.data;
+          setProfile({
+            name: data.name || 'Driver',
+            phone: data.phone || '-',
+            vehicle_number: data.vehicle_number || 'Not assigned',
+            vehicle_name: data.vehicle_name || 'N/A',
+            vehicle_type: data.vehicle_type || 'N/A',
+            status: data.status || 'available',
+            joined: data.joined_date 
+              ? new Date(data.joined_date).toLocaleDateString('en-IN', {
+                  day: '2-digit', month: 'short', year: 'numeric'
+                })
+              : '-',
+          });
+        } else {
+          setError('Failed to load profile.');
+        }
+      } catch (err) {
+        console.error('Error fetching profile:', err);
+        setError('Could not connect to server.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProfile();
+  }, []);
+
+  // Format status badge color
+  const getStatusVariant = (status) => {
+    const s = status?.toLowerCase() || '';
+    if (s === 'available') return 'success';
+    if (s === 'on_delivery') return 'info';
+    if (s === 'inactive') return 'error';
+    return 'default';
+  };
+
+  // ✅ Loading state
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20">
+        <FiLoader className="w-12 h-12 animate-spin text-[#16834B]" />
+        <p className="mt-4 text-[#6B716D]">Loading profile...</p>
+      </div>
+    );
+  }
+
+  // ✅ Error state
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20">
+        <FiAlertCircle className="w-12 h-12 text-[#D14343]" />
+        <p className="mt-4 text-[#D14343] font-medium">{error}</p>
+        <Button onClick={() => window.location.reload()} className="mt-4">
+          Retry
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -36,10 +111,12 @@ const DriverProfile = () => {
             </div>
             <div>
               <h2 className="text-xl font-semibold text-[#151A17]">{profile.name}</h2>
-              <p className="text-sm text-[#6B716D]">{profile.vehicleType}</p>
+              <p className="text-sm text-[#6B716D]">{profile.vehicle_name}</p>
             </div>
           </div>
-          <Badge variant="success">{profile.status}</Badge>
+          <Badge variant={getStatusVariant(profile.status)}>
+            {profile.status.charAt(0).toUpperCase() + profile.status.slice(1)}
+          </Badge>
         </div>
 
         {/* Profile Info */}
@@ -54,7 +131,9 @@ const DriverProfile = () => {
             </div>
             <div className="flex items-center gap-3">
               <FiTruck className="w-4 h-4 text-[#6B716D]" />
-              <span className="text-sm text-[#151A17]">{profile.vehicleNumber}</span>
+              <span className="text-sm text-[#151A17]">
+                {profile.vehicle_number} ({profile.vehicle_type})
+              </span>
             </div>
             <div className="flex items-center gap-3">
               <FiCalendar className="w-4 h-4 text-[#6B716D]" />

@@ -93,7 +93,7 @@ const createOrder = async (req, res) => {
         connection = await pool.getConnection();
         await connection.beginTransaction();
 
-        // INSERT ORDER - With all columns now available
+        // INSERT ORDER
         console.log('💾 Inserting order into database...');
 
         const [result] = await connection.query(
@@ -193,7 +193,7 @@ const createOrder = async (req, res) => {
 };
 
 // ============================================
-// GET MY ORDERS
+// GET MY ORDERS (Retailer) ✅ READS FROM trip_orders
 // ============================================
 const getMyOrders = async (req, res) => {
     try {
@@ -212,24 +212,57 @@ const getMyOrders = async (req, res) => {
             });
         }
 
+        // ✅ COMPLETE QUERY: Pull delivered_status directly from trip_orders
         const [orders] = await pool.query(`
             SELECT 
-                o.*,
+                o.id,
+                o.order_number,
+                o.kg_ordered,
+                o.rate_per_kg,
+                o.total_amount,
+                o.paid_amount,
+                o.balance,
+                o.payment_method,
+                o.payment_status,
+                o.order_status as original_order_status, -- Keep original for fallback
+                o.delivery_address,
+                o.order_date,
+                o.created_at,
+                o.delivered_date,
                 r.shop_name,
                 r.owner_name,
-                r.phone as retailer_phone
+                r.phone as retailer_phone,
+                -- Pull actual delivered stats
+                COALESCE(to_.actual_delivered_kg, 
+                    CASE WHEN o.order_status = 'delivered' THEN o.kg_ordered ELSE 0 END
+                ) as kg_delivered,
+                COALESCE(to_.cash_collected, 0) as cash_collected,
+                t.trip_number,
+                -- 🟢 CRITICAL CHANGE: Read this for the Green Badge!
+                to_.delivered_status
             FROM orders o
             JOIN retailers r ON o.retailer_id = r.id
+            LEFT JOIN trip_orders to_ ON o.id = to_.order_id
+            LEFT JOIN trips t ON o.trip_id = t.id
             WHERE o.retailer_id = ?
             ORDER BY o.created_at DESC
         `, [retailer[0].id]);
 
-        console.log(`✅ Found ${orders.length} orders`);
+        // Map data to frontend expectations (Prioritize trip_orders delivered_status)
+        const formattedOrders = orders.map(order => ({
+            ...order,
+            // If trip_orders says delivered, override main orders status!
+            order_status: order.delivered_status === 'delivered' 
+                ? 'delivered' 
+                : order.original_order_status
+        }));
+
+        console.log(`✅ Found ${formattedOrders.length} orders mapped from trip_orders`);
 
         res.status(200).json({
             success: true,
-            data: orders,
-            count: orders.length
+            data: formattedOrders,
+            count: formattedOrders.length
         });
 
     } catch (error) {
@@ -243,7 +276,7 @@ const getMyOrders = async (req, res) => {
 };
 
 // ============================================
-// GET ALL ORDERS (Admin) 🔥 UPDATED TO FILTER BY RETAILER
+// GET ALL ORDERS (Admin) ✅ READS FROM trip_orders
 // ============================================
 const getAllOrders = async (req, res) => {
     try {
@@ -256,22 +289,40 @@ const getAllOrders = async (req, res) => {
 
         console.log('📋 Fetching orders...');
 
-        // 🔥 NEW: Check if a specific retailer_id was sent in the query params
         const { retailer_id } = req.query;
 
         let sqlQuery = `
             SELECT 
-                o.*,
+                o.id,
+                o.order_number,
+                o.kg_ordered,
+                o.rate_per_kg,
+                o.total_amount,
+                o.paid_amount,
+                o.balance,
+                o.payment_method,
+                o.payment_status,
+                o.order_status as original_order_status,
+                o.delivery_address,
+                o.order_date,
+                o.created_at,
                 r.shop_name,
                 r.owner_name,
-                r.phone as retailer_phone
+                r.phone as retailer_phone,
+                COALESCE(to_.actual_delivered_kg, 
+                    CASE WHEN o.order_status = 'delivered' THEN o.kg_ordered ELSE 0 END
+                ) as kg_delivered,
+                COALESCE(to_.cash_collected, 0) as cash_collected,
+                t.trip_number,
+                to_.delivered_status
             FROM orders o
             JOIN retailers r ON o.retailer_id = r.id
+            LEFT JOIN trip_orders to_ ON o.id = to_.order_id
+            LEFT JOIN trips t ON o.trip_id = t.id
         `;
         
         let queryParams = [];
 
-        // If a retailer_id is passed, filter ONLY for that retailer
         if (retailer_id) {
             sqlQuery += ` WHERE o.retailer_id = ?`;
             queryParams.push(retailer_id);
@@ -281,12 +332,19 @@ const getAllOrders = async (req, res) => {
 
         const [orders] = await pool.query(sqlQuery, queryParams);
 
-        console.log(`✅ Found ${orders.length} orders`);
+        const formattedOrders = orders.map(order => ({
+            ...order,
+            order_status: order.delivered_status === 'delivered' 
+                ? 'delivered' 
+                : order.original_order_status
+        }));
+
+        console.log(`✅ Found ${formattedOrders.length} orders mapped from trip_orders`);
 
         res.status(200).json({
             success: true,
-            data: orders,
-            count: orders.length
+            data: formattedOrders,
+            count: formattedOrders.length
         });
 
     } catch (error) {
@@ -299,24 +357,48 @@ const getAllOrders = async (req, res) => {
 };
 
 // ============================================
-// GET ORDER BY ID
+// GET ORDER BY ID (Single order details) ✅ FINAL FIX
 // ============================================
 const getOrderById = async (req, res) => {
     try {
-        const { id } = req.params;
+        // ✅ Frontend now passes the numeric Primary Key ID
+        const { id } = req.params; 
         const userId = req.user.id;
         const userRole = req.user.role;
 
+        // ✅ CRITICAL FIX: Include o.retailer_id in the SELECT clause!
         const [orders] = await pool.query(`
             SELECT 
-                o.*,
+                o.id,
+                o.order_number,
+                o.retailer_id,  -- 🟢 THIS WAS MISSING! Without this, undefined happens.
+                o.kg_ordered,
+                o.rate_per_kg,
+                o.total_amount,
+                o.paid_amount,
+                o.balance,
+                o.payment_method,
+                o.payment_status,
+                o.order_status as original_order_status,
+                o.delivery_address,
+                o.order_date,
+                o.created_at,
+                o.delivered_date,
                 r.shop_name,
                 r.owner_name,
-                r.phone as retailer_phone
+                r.phone as retailer_phone,
+                COALESCE(to_.actual_delivered_kg, 
+                    CASE WHEN o.order_status = 'delivered' THEN o.kg_ordered ELSE 0 END
+                ) as kg_delivered,
+                COALESCE(to_.cash_collected, 0) as cash_collected,
+                t.trip_number,
+                to_.delivered_status
             FROM orders o
             JOIN retailers r ON o.retailer_id = r.id
-            WHERE o.id = ?
-        `, [id]);
+            LEFT JOIN trip_orders to_ ON o.id = to_.order_id
+            LEFT JOIN trips t ON o.trip_id = t.id
+            WHERE o.id = ? 
+        `, [id]); // ✅ Searching by Numeric Primary ID
 
         if (orders.length === 0) {
             return res.status(404).json({
@@ -326,14 +408,23 @@ const getOrderById = async (req, res) => {
         }
 
         const order = orders[0];
+        
+        // Override status based on trip_orders
+        order.order_status = order.delivered_status === 'delivered' 
+            ? 'delivered' 
+            : order.original_order_status;
 
+        // 🔒 Security Check: Make sure the logged-in user owns this order
         if (userRole !== 'admin') {
+            // Find the retailer profile of the logged-in user
             const [retailer] = await pool.query(
                 'SELECT id FROM retailers WHERE user_id = ?',
                 [userId]
             );
 
-            if (retailer.length === 0 || order.retailer_id !== retailer[0].id) {
+            // 🛡️ FINAL FIX: Compare using Number() 
+            if (retailer.length === 0 || Number(order.retailer_id) !== Number(retailer[0].id)) {
+                console.warn(`🚫 Access Denied! Order ID ${id} belongs to retailer ${order.retailer_id}, but user is linked to retailer ${retailer[0]?.id}`);
                 return res.status(403).json({
                     success: false,
                     message: 'Access denied. This is not your order.'
@@ -476,7 +567,6 @@ const getOrderStats = async (req, res) => {
 const recordPayment = async (req, res) => {
     let connection;
     try {
-        // Admin check (Optional: Remove if you want retailers to record payments too)
         if (req.user.role !== 'admin') {
             return res.status(403).json({
                 success: false,
@@ -491,31 +581,26 @@ const recordPayment = async (req, res) => {
             bill_allocations 
         } = req.body;
 
-        // 1. Validate Input
         if (!retailer_id || !amount || amount <= 0 || !bill_allocations || bill_allocations.length === 0) {
             return res.status(400).json({
                 success: false,
-                message: 'Invalid payment data. Amount and bill allocations are required.'
+                message: 'Invalid payment data.'
             });
         }
 
         connection = await pool.getConnection();
         await connection.beginTransaction();
 
-        // 2. Get current retailer outstanding balance
         const [retailerRows] = await connection.query(
             'SELECT outstanding FROM retailers WHERE id = ?',
             [retailer_id]
         );
         
-        if (retailerRows.length === 0) {
-            throw new Error('Retailer not found');
-        }
+        if (retailerRows.length === 0) throw new Error('Retailer not found');
 
         const currentOutstanding = parseFloat(retailerRows[0].outstanding) || 0;
         const newOutstanding = Math.max(0, currentOutstanding - amount);
 
-        // 3. Update specific bill balances (FIFO)
         let processedAmount = 0;
         let lastUpdatedOrderId = null;
         
@@ -535,10 +620,7 @@ const recordPayment = async (req, res) => {
 
             if (payAmount > 0) {
                 await connection.query(
-                    `UPDATE orders 
-                     SET balance = balance - ?, 
-                         paid_amount = paid_amount + ? 
-                     WHERE id = ?`,
+                    `UPDATE orders SET balance = balance - ?, paid_amount = paid_amount + ? WHERE id = ?`,
                     [payAmount, payAmount, order.id]
                 );
                 
@@ -547,60 +629,34 @@ const recordPayment = async (req, res) => {
             }
         }
 
-        // 4. Update retailer total outstanding
         await connection.query(
             'UPDATE retailers SET outstanding = ? WHERE id = ?',
             [newOutstanding, retailer_id]
         );
 
-        // 5. Insert into ledgers table
         const description = `Payment via ${payment_method}`;
-        const currentDate = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+        const currentDate = new Date().toISOString().slice(0, 10);
 
         await connection.query(
-            `INSERT INTO ledgers 
-             (retailer_id, order_id, type, amount, description, date, created_at) 
+            `INSERT INTO ledgers (retailer_id, order_id, type, amount, description, date, created_at) 
              VALUES (?, ?, ?, ?, ?, ?, NOW())`,
             [retailer_id, lastUpdatedOrderId, 'credit', amount, description, currentDate]
         );
 
-        // 6. Commit transaction
         await connection.commit();
 
         res.status(200).json({
             success: true,
             message: 'Payment recorded successfully',
-            data: {
-                newOutstanding: newOutstanding,
-                processedAmount: processedAmount
-            }
+            data: { newOutstanding, processedAmount }
         });
 
     } catch (error) {
+        await connection.rollback();
         console.error('❌ Error in recordPayment:', error);
-        
-        if (connection) {
-            try {
-                await connection.rollback();
-                console.log('🔄 Transaction rolled back');
-            } catch (rollbackError) {
-                console.error('❌ Rollback failed:', rollbackError);
-            }
-        }
-        
-        res.status(500).json({ 
-            success: false, 
-            message: error.message || 'Failed to record payment' 
-        });
+        res.status(500).json({ success: false, message: error.message || 'Failed to record payment' });
     } finally {
-        if (connection) {
-            try {
-                connection.release();
-                console.log('🔌 Connection released');
-            } catch (releaseError) {
-                console.error('❌ Release failed:', releaseError);
-            }
-        }
+        connection.release();
     }
 };
 

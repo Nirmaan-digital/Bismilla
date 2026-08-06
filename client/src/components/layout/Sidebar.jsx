@@ -1,5 +1,7 @@
+import { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import api from '../../services/api';
 import {
   FiHome,
   FiDollarSign,
@@ -15,10 +17,51 @@ import {
   FiUserPlus,
   FiBriefcase,
   FiCheckCircle,
+  FiLoader
 } from 'react-icons/fi';
 
 const Sidebar = ({ onClose }) => {
   const { logout, user } = useAuth();
+  const [displayName, setDisplayName] = useState(user?.name || 'Admin');
+  const [isLoadingProfile, setIsLoadingProfile] = useState(false);
+
+  // ✅ FETCH FRESH PROFILE DATA ON MOUNT
+  useEffect(() => {
+    const fetchFreshProfile = async () => {
+      setIsLoadingProfile(true);
+      try {
+        // This calls your newly fixed authController
+        const response = await api.get('/auth/me');
+        
+        if (response.data.success && response.data.data) {
+          const freshUser = response.data.data;
+          
+          // 1. Update the sidebar state
+          setDisplayName(freshUser.name || 'Admin');
+          
+          // 2. Update localStorage so the Header also updates instantly
+          const savedUser = localStorage.getItem('user');
+          if (savedUser) {
+            const parsedUser = JSON.parse(savedUser);
+            parsedUser.name = freshUser.name;
+            parsedUser.phone = freshUser.phone; // Update phone too just in case
+            localStorage.setItem('user', JSON.stringify(parsedUser));
+            
+            // 3. Force a refresh of the context across the whole app
+            window.dispatchEvent(new Event('storage'));
+          }
+        }
+      } catch (error) {
+        // If the API call fails (network issues), just fallback to the existing context name
+        console.log('ℹ️ Could not refresh profile from server. Using local fallback.');
+        setDisplayName(user?.name || 'Admin');
+      } finally {
+        setIsLoadingProfile(false);
+      }
+    };
+
+    fetchFreshProfile();
+  }, [user?.name]); // Re-run if context user changes
 
   const navItems = [
     { 
@@ -115,10 +158,24 @@ const Sidebar = ({ onClose }) => {
       <div className="flex-shrink-0 p-4 border-t border-white/10">
         <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-white/5">
           <div className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center">
-            <span className="text-sm font-medium">{user?.name?.[0] || 'A'}</span>
+            <span className="text-sm font-medium">
+              {isLoadingProfile ? (
+                <FiLoader className="animate-spin w-4 h-4" />
+              ) : (
+                displayName?.[0] || 'A'
+              )}
+            </span>
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate">{user?.name || 'Admin'}</p>
+            <p className="text-sm font-medium truncate">
+              {isLoadingProfile ? (
+                <span className="flex items-center gap-2">
+                  <FiLoader className="animate-spin w-3 h-3" /> Loading...
+                </span>
+              ) : (
+                displayName || 'Admin'
+              )}
+            </p>
             <p className="text-xs text-gray-400 capitalize">{user?.role || 'Administrator'}</p>
           </div>
           <button

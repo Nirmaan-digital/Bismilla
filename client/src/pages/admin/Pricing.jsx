@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   FiDollarSign, 
   FiEdit2, 
@@ -9,218 +9,196 @@ import {
   FiTrendingUp,
   FiUser,
   FiCheck,
-  FiAlertCircle
+  FiAlertCircle,
+  FiLoader
 } from 'react-icons/fi';
 import Button from '../../components/common/Button';
 import Badge from '../../components/common/Badge';
 import SearchInput from '../../components/common/SearchInput';
 import Modal from '../../components/common/Modal';
-import { formatDate } from '../../data/mockData';
+import api from '../../services/api';
 
-// Mock data for default prices
-const defaultPrices = {
-  wholeChicken: 210,
-  skinlessChicken: 240,
-  chickenBreast: 280,
-  chickenLegs: 195,
-  chickenWings: 175,
+// Helper to format dates nicely
+const formatDate = (dateString) => {
+  if (!dateString) return '-';
+  return new Date(dateString).toLocaleString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 };
 
-// Mock data for user-specific prices
-const mockUserPrices = [
-  { 
-    id: 'CUST-001', 
-    name: 'Ahmed Khan', 
-    shop: 'Al Madina Chicken Shop',
-    phone: '9876543210',
-    role: 'retailer',
-    defaultPrice: 210,
-    customPrice: 205,
-    isCustom: true,
-    lastUpdated: '24 Jul 2026, 10:30 AM',
-  },
-  { 
-    id: 'CUST-002', 
-    name: 'Suresh Reddy', 
-    shop: 'Hyderabad Poultry',
-    phone: '9876543211',
-    role: 'retailer',
-    defaultPrice: 210,
-    customPrice: null,
-    isCustom: false,
-    lastUpdated: '-',
-  },
-  { 
-    id: 'CUST-003', 
-    name: 'Priya Patel', 
-    shop: 'City Chicken Store',
-    phone: '9876543212',
-    role: 'retailer',
-    defaultPrice: 210,
-    customPrice: 215,
-    isCustom: true,
-    lastUpdated: '23 Jul 2026, 02:15 PM',
-  },
-  { 
-    id: 'CUST-004', 
-    name: 'Ravi Kumar', 
-    shop: 'Fresh Meat Shop',
-    phone: '9876543213',
-    role: 'retailer',
-    defaultPrice: 210,
-    customPrice: null,
-    isCustom: false,
-    lastUpdated: '-',
-  },
-  { 
-    id: 'CUST-005', 
-    name: 'Mohan Reddy', 
-    shop: 'Lakshmi Poultry',
-    phone: '9876543214',
-    role: 'retailer',
-    defaultPrice: 210,
-    customPrice: 200,
-    isCustom: true,
-    lastUpdated: '22 Jul 2026, 09:45 AM',
-  },
-];
-
-// Price history mock data
-const priceHistory = [
-  { date: '24 Jul 2026', price: 210, changedBy: 'Admin', note: 'Daily update' },
-  { date: '23 Jul 2026', price: 205, changedBy: 'Admin', note: 'Market adjustment' },
-  { date: '22 Jul 2026', price: 208, changedBy: 'Admin', note: 'Weekly revision' },
-  { date: '21 Jul 2026', price: 210, changedBy: 'Admin', note: 'Back to regular' },
-  { date: '20 Jul 2026', price: 200, changedBy: 'Admin', note: 'Special promotion' },
-];
-
 const Pricing = () => {
-  const [currentPrice, setCurrentPrice] = useState(210);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  
+  const [currentPrice, setCurrentPrice] = useState(0);
+  const [lastUpdated, setLastUpdated] = useState('-');
+  const [userPrices, setUserPrices] = useState([]);
+  const [customPriceUsers, setCustomPriceUsers] = useState(0);
+  
   const [isEditingDefault, setIsEditingDefault] = useState(false);
-  const [editPriceValue, setEditPriceValue] = useState(currentPrice);
+  const [editPriceValue, setEditPriceValue] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [customPriceValue, setCustomPriceValue] = useState('');
-  const [userPrices, setUserPrices] = useState(mockUserPrices);
+  
   const [isPriceHistoryOpen, setIsPriceHistoryOpen] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState('24 Jul 2026, 8:25:37 pm');
-  const [priceHistoryList, setPriceHistoryList] = useState(priceHistory);
+  const [priceHistoryList, setPriceHistoryList] = useState([]);
 
-  // Filter users based on search
-  const filteredUsers = userPrices.filter(user => 
-    user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.shop.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.phone.includes(searchTerm)
-  );
-
-  // Get users with custom prices
-  const customPriceUsers = userPrices.filter(user => user.isCustom);
-
-  // Handle default price update
-  const handleDefaultPriceUpdate = () => {
-    const newPrice = parseFloat(editPriceValue);
-    if (newPrice > 0) {
-      // Update current price
-      setCurrentPrice(newPrice);
+  // ============================================
+  // 1. FETCH DATA FROM BACKEND
+  // ============================================
+  const fetchPricingData = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await api.get('/pricing/admin-data');
       
-      // Update default price for all users
-      const updatedUsers = userPrices.map(user => ({
-        ...user,
-        defaultPrice: newPrice,
-        // If user doesn't have custom price, show default
-        customPrice: user.isCustom ? user.customPrice : null,
-        isCustom: user.isCustom,
-        lastUpdated: user.isCustom ? user.lastUpdated : '-'
-      }));
-      
-      setUserPrices(updatedUsers);
-      setIsEditingDefault(false);
-      
-      const now = new Date().toLocaleString('en-IN', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false
-      });
-      setLastUpdated(now);
-      
-      // Add to price history
-      setPriceHistoryList([
-        {
-          date: formatDate(new Date()),
-          price: newPrice,
-          changedBy: 'Admin',
-          note: 'Daily update'
-        },
-        ...priceHistoryList
-      ]);
+      if (response.data.success) {
+        const { globalPrice, lastUpdated, retailers } = response.data;
+        
+        setCurrentPrice(globalPrice);
+        setLastUpdated(formatDate(lastUpdated));
+        setUserPrices(retailers);
+        
+        // Calculate custom price user count
+        const customCount = retailers.filter(r => r.custom_price > 0).length;
+        setCustomPriceUsers(customCount);
+        
+        // Update edit input to match current
+        setEditPriceValue(globalPrice);
+      }
+    } catch (err) {
+      console.error('Error fetching pricing data:', err);
+      setError('Failed to load pricing data. Please refresh.');
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Handle user custom price update
-  const handleUserPriceUpdate = () => {
+  useEffect(() => {
+    fetchPricingData();
+  }, []);
+
+  // ============================================
+  // 2. UPDATE GLOBAL PRICE
+  // ============================================
+  const handleDefaultPriceUpdate = async () => {
+    const newPrice = parseFloat(editPriceValue);
+    if (!newPrice || newPrice <= 0) {
+      alert('Please enter a valid price greater than 0');
+      return;
+    }
+
+    try {
+      const response = await api.post('/pricing/global', { price: newPrice });
+      if (response.data.success) {
+        alert('Global price updated successfully!');
+        setIsEditingDefault(false);
+        fetchPricingData(); // Refresh data from server
+      }
+    } catch (err) {
+      console.error('Error updating global price:', err);
+      alert('Failed to update global price. Please try again.');
+    }
+  };
+
+  // ============================================
+  // 3. UPDATE CUSTOM PRICE
+  // ============================================
+  const handleUserPriceUpdate = async () => {
     if (!selectedUser) return;
     
     const newPrice = parseFloat(customPriceValue);
-    if (newPrice > 0) {
-      const updatedUsers = userPrices.map(user => 
-        user.id === selectedUser.id
-          ? { 
-              ...user, 
-              customPrice: newPrice,
-              isCustom: true,
-              defaultPrice: currentPrice, // Keep default price updated
-              lastUpdated: new Date().toLocaleString('en-IN', {
-                day: '2-digit',
-                month: 'short',
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
-              })
-            }
-          : user
-      );
-      setUserPrices(updatedUsers);
-      setIsUserModalOpen(false);
-      setCustomPriceValue('');
-      setSelectedUser(null);
+    if (!newPrice || newPrice <= 0) {
+      alert('Please enter a valid custom price greater than 0');
+      return;
+    }
+
+    try {
+      const response = await api.post('/pricing/custom', { 
+        retailer_id: selectedUser.id, 
+        custom_price: newPrice 
+      });
+      
+      if (response.data.success) {
+        setIsUserModalOpen(false);
+        setSelectedUser(null);
+        setCustomPriceValue('');
+        fetchPricingData(); // Refresh data from server
+        alert('Custom price updated successfully!');
+      }
+    } catch (err) {
+      console.error('Error updating custom price:', err);
+      alert('Failed to update custom price. Please try again.');
     }
   };
 
-  // Remove custom price from user
-  const removeCustomPrice = (userId) => {
-    const updatedUsers = userPrices.map(user => 
-      user.id === userId
-        ? { 
-            ...user, 
-            customPrice: null, 
-            isCustom: false, 
-            defaultPrice: currentPrice,
-            lastUpdated: '-'
-          }
-        : user
-    );
-    setUserPrices(updatedUsers);
+  // ============================================
+  // 4. REMOVE (REVERT) CUSTOM PRICE
+  // ============================================
+  const removeCustomPrice = async (userId) => {
+    if (!confirm('Are you sure you want to revert this retailer back to the default global price?')) return;
+
+    try {
+      const response = await api.delete(`/pricing/custom/${userId}`);
+      if (response.data.success) {
+        fetchPricingData(); // Refresh data from server
+      }
+    } catch (err) {
+      console.error('Error reverting price:', err);
+      alert('Failed to revert price. Please try again.');
+    }
   };
 
-  // Open user price modal
+  // ============================================
+  // 5. OPEN MODALS
+  // ============================================
   const openUserPriceModal = (user) => {
     setSelectedUser(user);
-    setCustomPriceValue(user.customPrice ? user.customPrice.toString() : '');
+    // If they have a custom price, pre-fill it. Otherwise, show 0 or empty.
+    setCustomPriceValue(user.custom_price > 0 ? user.custom_price.toString() : '');
     setIsUserModalOpen(true);
   };
 
-  // Get displayed price for user
-  const getUserDisplayPrice = (user) => {
-    if (user.isCustom && user.customPrice !== null) {
-      return user.customPrice;
-    }
-    return currentPrice; // Use current default price
-  };
+  // Filter users based on search
+  const filteredUsers = userPrices.filter(user => 
+    user.shop_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    user.owner_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    user.phone?.includes(searchTerm)
+  );
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20">
+        <FiLoader className="w-12 h-12 text-[#111714] animate-spin" />
+        <p className="mt-4 text-[#6B716D]">Loading pricing data...</p>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20">
+        <FiAlertCircle className="w-12 h-12 text-[#D14343]" />
+        <p className="mt-4 text-[#D14343] font-medium">{error}</p>
+        <Button 
+          variant="outline" 
+          className="mt-4"
+          onClick={fetchPricingData}
+        >
+          Try Again
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -236,6 +214,10 @@ const Pricing = () => {
             onClick={() => setIsPriceHistoryOpen(true)}
           >
             View History
+          </Button>
+          <Button variant="outline" size="sm" onClick={fetchPricingData}>
+            <FiLoader className="w-4 h-4 mr-2" />
+            Refresh
           </Button>
         </div>
       </div>
@@ -327,7 +309,7 @@ const Pricing = () => {
             <div className="flex items-center gap-2">
               <FiUsers className="w-4 h-4 text-[#3B6FD8]" />
               <span className="text-[#6B716D]">Custom Prices:</span>
-              <span className="font-medium text-[#151A17]">{customPriceUsers.length} users</span>
+              <span className="font-medium text-[#151A17]">{customPriceUsers} users</span>
             </div>
           </div>
         </div>
@@ -363,40 +345,40 @@ const Pricing = () => {
             </thead>
             <tbody className="divide-y divide-[#E5E8E6]">
               {filteredUsers.map((user) => {
-                const displayPrice = getUserDisplayPrice(user);
+                const isCustom = user.custom_price > 0;
                 return (
                   <tr key={user.id} className="hover:bg-[#F6F7F6] transition">
                     <td className="px-6 py-4">
                       <div>
-                        <p className="text-sm font-medium text-[#151A17]">{user.name}</p>
-                        <p className="text-xs text-[#6B716D]">{user.shop}</p>
+                        <p className="text-sm font-medium text-[#151A17]">{user.shop_name}</p>
+                        <p className="text-xs text-[#6B716D]">{user.owner_name}</p>
                       </div>
                     </td>
                     <td className="px-6 py-4 text-sm text-[#6B716D]">
                       ₹{currentPrice}/kg
                     </td>
                     <td className="px-6 py-4">
-                      {user.isCustom ? (
+                      {isCustom ? (
                         <span className="text-sm font-semibold text-[#3B6FD8]">
-                          ₹{user.customPrice}/kg
+                          ₹{user.custom_price}/kg
                         </span>
                       ) : (
                         <span className="text-sm text-[#6B716D]">₹{currentPrice}/kg</span>
                       )}
                     </td>
                     <td className="px-6 py-4">
-                      {user.isCustom ? (
+                      {isCustom ? (
                         <Badge variant="info">Custom</Badge>
                       ) : (
                         <Badge variant="default">Default</Badge>
                       )}
                     </td>
                     <td className="px-6 py-4 text-sm text-[#6B716D]">
-                      {user.lastUpdated}
+                      {formatDate(user.custom_price_updated_at)}
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center justify-end gap-2">
-                        {user.isCustom && (
+                        {isCustom && (
                           <button
                             onClick={() => removeCustomPrice(user.id)}
                             className="p-2 hover:bg-gray-100 rounded-lg transition"
@@ -408,7 +390,7 @@ const Pricing = () => {
                         <button
                           onClick={() => openUserPriceModal(user)}
                           className="p-2 hover:bg-gray-100 rounded-lg transition"
-                          title={user.isCustom ? "Edit Custom Price" : "Set Custom Price"}
+                          title={isCustom ? "Edit Custom Price" : "Set Custom Price"}
                         >
                           <FiEdit2 className="w-4 h-4 text-[#6B716D]" />
                         </button>
@@ -430,8 +412,8 @@ const Pricing = () => {
           setSelectedUser(null);
           setCustomPriceValue('');
         }}
-        title={selectedUser?.isCustom ? "Edit Custom Price" : "Set Custom Price"}
-        description={`Set custom price for ${selectedUser?.name} (${selectedUser?.shop})`}
+        title={selectedUser?.custom_price > 0 ? "Edit Custom Price" : "Set Custom Price"}
+        description={`Set custom price for ${selectedUser?.shop_name} (${selectedUser?.owner_name})`}
         footer={
           <>
             <Button 
@@ -445,7 +427,7 @@ const Pricing = () => {
               Cancel
             </Button>
             <Button onClick={handleUserPriceUpdate}>
-              {selectedUser?.isCustom ? "Update Price" : "Set Price"}
+              {selectedUser?.custom_price > 0 ? "Update Price" : "Set Price"}
             </Button>
           </>
         }
@@ -460,7 +442,7 @@ const Pricing = () => {
               <div>
                 <p className="text-[#6B716D]">Current Custom Price</p>
                 <p className="font-semibold text-[#151A17]">
-                  {selectedUser?.isCustom ? `₹${selectedUser?.customPrice}/kg` : 'Not set'}
+                  {selectedUser?.custom_price > 0 ? `₹${selectedUser?.custom_price}/kg` : 'Not set'}
                 </p>
               </div>
             </div>
@@ -501,27 +483,11 @@ const Pricing = () => {
         }
       >
         <div className="space-y-3 max-h-[400px] overflow-y-auto">
-          {priceHistoryList.map((entry, index) => (
-            <div key={index} className="flex items-center justify-between p-4 border border-[#E5E8E6] rounded-lg hover:bg-[#F6F7F6] transition">
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-full bg-[#F6F7F6] flex items-center justify-center">
-                  <FiDollarSign className="w-4 h-4 text-[#111714]" />
-                </div>
-                <div>
-                  <p className="font-medium text-[#151A17]">
-                    ₹{entry.price}/kg
-                  </p>
-                  <p className="text-sm text-[#6B716D]">
-                    {entry.note}
-                  </p>
-                </div>
-              </div>
-              <div className="text-right">
-                <p className="text-sm text-[#6B716D]">{entry.date}</p>
-                <p className="text-xs text-[#6B716D]">By: {entry.changedBy}</p>
-              </div>
-            </div>
-          ))}
+          {/* Since we don't have a price history table in DB yet, we use a placeholder */}
+          <div className="p-8 text-center text-[#6B716D]">
+            <p>Price history feature coming soon!</p>
+            <p className="text-sm mt-2">Currently, only the latest default price is tracked in the database.</p>
+          </div>
         </div>
       </Modal>
     </div>

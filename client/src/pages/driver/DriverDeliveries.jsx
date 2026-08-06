@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   FiTruck, 
@@ -10,86 +10,105 @@ import {
   FiClock,
   FiCheckCircle,
   FiAlertCircle,
-  FiArrowRight
+  FiArrowRight,
+  FiLoader
 } from 'react-icons/fi';
 import Button from '../../components/common/Button';
 import Badge from '../../components/common/Badge';
-
-// Mock data - will come from API
-const mockDeliveries = [
-  {
-    id: 'TRIP-001',
-    date: '24 Jul 2026',
-    status: 'In Progress',
-    orders: [
-      {
-        id: 'ORD-1001',
-        retailer: 'Sharma Chicken Corner',
-        address: '12 Market Road, Hyderabad',
-        phone: '9876543210',
-        kg: 150,
-        actualKg: 155,
-        amount: 28200,
-        status: 'Delivered',
-        paymentStatus: 'Partial',
-        cashCollected: 15000,
-      },
-      {
-        id: 'ORD-1005',
-        retailer: 'Khan Poultry',
-        address: '45 Main Street, Secunderabad',
-        phone: '9876543211',
-        kg: 220,
-        actualKg: 220,
-        amount: 41360,
-        status: 'Pending',
-        paymentStatus: 'Pending',
-        cashCollected: 0,
-      },
-    ],
-  },
-  {
-    id: 'TRIP-002',
-    date: '23 Jul 2026',
-    status: 'Completed',
-    orders: [
-      {
-        id: 'ORD-1002',
-        retailer: 'Reddy Fresh Meats',
-        address: 'Plot 8, Industrial Area, Hyderabad',
-        phone: '9876543212',
-        kg: 180,
-        actualKg: 180,
-        amount: 33840,
-        status: 'Delivered',
-        paymentStatus: 'Paid',
-        cashCollected: 33840,
-      },
-    ],
-  },
-];
+import api from '../../services/api';
 
 const DriverDeliveries = () => {
-  const [deliveries] = useState(mockDeliveries);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [deliveries, setDeliveries] = useState([]);
   const [filter, setFilter] = useState('all');
 
+  // ============================================
+  // FETCH REAL DATA FROM BACKEND
+  // ============================================
+  const fetchTrips = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await api.get('/driver/trips');
+      if (response.data.success) {
+        setDeliveries(response.data.data);
+      }
+    } catch (err) {
+      console.error('Error fetching trips:', err);
+      setError('Failed to load trip data.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTrips();
+  }, []);
+
+  // ============================================
+  // HELPER FUNCTIONS
+  // ============================================
   const filteredDeliveries = deliveries.filter(d => {
     if (filter === 'all') return true;
-    if (filter === 'in-progress') return d.status === 'In Progress';
+    if (filter === 'in-progress') return d.status === 'In Progress' || d.status === 'Assigned';
     if (filter === 'completed') return d.status === 'Completed';
     return true;
   });
 
-  // Format currency
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
       currency: 'INR',
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
-    }).format(amount);
+    }).format(amount || 0);
   };
 
+  const getStatusVariant = (status) => {
+    if (status === 'Completed') return 'success';
+    if (status === 'In Progress' || status === 'Assigned') return 'info';
+    return 'default';
+  };
+
+  const getOrderStatusVariant = (status) => {
+    if (status === 'Delivered') return 'success';
+    return 'warning';
+  };
+
+  // ============================================
+  // LOADING STATE
+  // ============================================
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <FiLoader className="w-12 h-12 animate-spin text-[#16834B] mx-auto mb-4" />
+          <p className="text-[#6B716D]">Loading trips...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // ============================================
+  // ERROR STATE
+  // ============================================
+  if (error) {
+    return (
+      <div className="bg-[#FDEEEE] border border-[#D14343]/20 rounded-xl p-8 text-center max-w-md mx-auto">
+        <FiAlertCircle className="w-16 h-16 text-[#D14343] mx-auto mb-4" />
+        <h3 className="text-lg font-semibold text-[#D14343] mb-2">Unable to Load Trips</h3>
+        <p className="text-sm text-[#D14343]/80 mb-4">{error}</p>
+        <Button onClick={fetchTrips} className="mt-4">
+          Retry
+        </Button>
+      </div>
+    );
+  }
+
+  // ============================================
+  // RENDER PAGE
+  // ============================================
   return (
     <div className="max-w-4xl mx-auto">
       {/* Header */}
@@ -141,7 +160,7 @@ const DriverDeliveries = () => {
                 <div>
                   <div className="flex items-center gap-3">
                     <h3 className="font-semibold text-[#151A17]">{trip.id}</h3>
-                    <Badge variant={trip.status === 'In Progress' ? 'info' : 'success'}>
+                    <Badge variant={getStatusVariant(trip.status)}>
                       {trip.status}
                     </Badge>
                   </div>
@@ -161,7 +180,7 @@ const DriverDeliveries = () => {
                       <div>
                         <div className="flex items-center gap-2">
                           <p className="font-medium text-[#151A17]">{order.retailer}</p>
-                          <Badge variant={order.status === 'Delivered' ? 'success' : 'warning'}>
+                          <Badge variant={getOrderStatusVariant(order.status)}>
                             {order.status}
                           </Badge>
                         </div>

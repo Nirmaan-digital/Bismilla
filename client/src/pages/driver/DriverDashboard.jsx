@@ -5,94 +5,83 @@ import {
   FiTruck, 
   FiPackage, 
   FiDollarSign,
-  FiClock,
   FiMapPin,
-  FiUser,
   FiPhone,
-  FiArrowRight,
   FiCheckCircle,
   FiAlertCircle,
   FiLoader,
-  FiLogOut
+  FiLogOut,
+  FiEdit2,
+  FiUploadCloud,
+  FiX
 } from 'react-icons/fi';
 import Button from '../../components/common/Button';
 import Badge from '../../components/common/Badge';
-
-// Mock data for now - will be replaced with API
-const mockTrips = [
-  {
-    id: 'TRIP-001',
-    date: '24 Jul 2026',
-    orders: [
-      {
-        id: 'ORD-1001',
-        retailer: 'Sharma Chicken Corner',
-        address: '12 Market Road, Hyderabad',
-        phone: '9876543210',
-        kg: 150,
-        amount: 28200,
-        status: 'pending',
-        paymentStatus: 'Partial',
-      },
-      {
-        id: 'ORD-1005',
-        retailer: 'Khan Poultry',
-        address: '45 Main Street, Secunderabad',
-        phone: '9876543211',
-        kg: 220,
-        amount: 41360,
-        status: 'pending',
-        paymentStatus: 'Pending',
-      },
-    ],
-    totalKg: 370,
-    totalOrders: 2,
-    status: 'assigned',
-  },
-];
+import api from '../../services/api';
 
 const DriverDashboard = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
 
-  const [loading, setLoading] = useState(false);
-  const [trips, setTrips] = useState(mockTrips);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [trips, setTrips] = useState([]);
   const [activeTrip, setActiveTrip] = useState(null);
   const [isTripStarted, setIsTripStarted] = useState(false);
+  
+  // Lock states for Driver inputs
+  const [isHensLocked, setIsHensLocked] = useState(false);
+  const [isDieselLocked, setIsDieselLocked] = useState(false);
+
   const [tripData, setTripData] = useState({
     totalHens: '',
     dieselAmount: '',
     dieselPhoto: null,
     dieselPhotoPreview: null,
+    dieselPhotoUrl: '',
     orders: [],
   });
 
-  // Log user data on mount
+  // Fetch Data
+  const fetchDashboardData = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await api.get('/driver/dashboard');
+      if (response.data.success && response.data.data.hasTrip) {
+        setTrips(response.data.data.trips);
+      } else {
+        setTrips([]);
+      }
+    } catch (err) {
+      console.error('Error fetching driver data:', err);
+      setError('Failed to load trip data.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    console.log('👤 Current user:', user);
-    console.log('📦 User from localStorage:', localStorage.getItem('user'));
-    console.log('🔑 Token from localStorage:', localStorage.getItem('token') ? 'Exists' : 'None');
-  }, [user]);
+    fetchDashboardData();
+  }, []);
 
   const currentTrip = trips.length > 0 ? trips[0] : null;
   const totalOrders = currentTrip?.orders?.length || 0;
   const totalKg = currentTrip?.totalKg || 0;
 
-  // Format currency
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
+      style: 'currency', currency: 'INR', minimumFractionDigits: 0, maximumFractionDigits: 0,
+    }).format(amount || 0);
   };
 
+  // Start Trip - Set initial real data
   const handleStartTrip = () => {
     setIsTripStarted(true);
     setActiveTrip(currentTrip);
     setTripData({
       ...tripData,
+      totalHens: currentTrip.totalHens || '',
       orders: currentTrip.orders.map(order => ({
         ...order,
         actualKg: order.kg,
@@ -102,30 +91,42 @@ const DriverDashboard = () => {
     });
   };
 
+  // Complete Trip - Send to backend
   const handleCompleteTrip = async () => {
     try {
-      alert('Trip completed successfully!');
-      setIsTripStarted(false);
-      setActiveTrip(null);
-      setTripData({
-        totalHens: '',
-        dieselAmount: '',
-        dieselPhoto: null,
-        dieselPhotoPreview: null,
-        orders: [],
-      });
+      const payload = {
+        tripNumber: activeTrip.id,
+        status: 'completed',
+        totalHens: parseFloat(tripData.totalHens) || 0,
+        dieselAmount: parseFloat(tripData.dieselAmount) || 0,
+        dieselPhotoUrl: tripData.dieselPhotoUrl,
+        orders: tripData.orders
+      };
+
+      const response = await api.put('/driver/trip/status', payload);
+      if (response.data.success) {
+        alert('Trip completed successfully! Cash sent to Admin for verification.');
+        setIsTripStarted(false);
+        setActiveTrip(null);
+        setTripData({
+          totalHens: '', dieselAmount: '', dieselPhoto: null, dieselPhotoPreview: null, dieselPhotoUrl: '', orders: []
+        });
+        setIsHensLocked(false);
+        setIsDieselLocked(false);
+        fetchDashboardData();
+      }
     } catch (error) {
       console.error('Error completing trip:', error);
       alert('Error completing trip. Please try again.');
     }
   };
 
+  // Order actions
   const handleOrderDelivered = (orderId) => {
     const updatedOrders = tripData.orders.map(order =>
       order.id === orderId ? { ...order, delivered: true } : order
     );
     setTripData({ ...tripData, orders: updatedOrders });
-
     const allDelivered = updatedOrders.every(order => order.delivered);
     if (allDelivered) {
       alert('All orders delivered! You can now complete the trip.');
@@ -146,21 +147,13 @@ const DriverDashboard = () => {
     setTripData({ ...tripData, orders: updatedOrders });
   };
 
-  const getDeliveredCount = () => {
-    return tripData.orders.filter(o => o.delivered).length;
-  };
+  const getDeliveredCount = () => tripData.orders.filter(o => o.delivered).length;
+  const getTotalDeliveredKg = () => tripData.orders.reduce((sum, o) => sum + (o.actualKg || 0), 0);
+  const getTotalCashCollected = () => tripData.orders.reduce((sum, o) => sum + (o.cashCollected || 0), 0);
 
-  const getTotalDeliveredKg = () => {
-    return tripData.orders.reduce((sum, o) => sum + (o.actualKg || 0), 0);
-  };
-
-  const getTotalCashCollected = () => {
-    return tripData.orders.reduce((sum, o) => sum + (o.cashCollected || 0), 0);
-  };
-
+  // ✅ FIXED MATH: Use parseFloat to ensure multiplication
   const totalKgFromHens = tripData.totalHens ? parseFloat(tripData.totalHens) * 0.5 : 0;
 
-  // Get greeting based on time
   const getGreeting = () => {
     const hour = new Date().getHours();
     if (hour < 12) return 'Good morning';
@@ -168,84 +161,113 @@ const DriverDashboard = () => {
     return 'Good evening';
   };
 
-  // If trip is started, show the trip details view
+  if (loading) {
+    return ( <div className="flex items-center justify-center h-64"><FiLoader className="w-12 h-12 animate-spin text-[#16834B] mx-auto mb-4" /><p className="text-[#6B716D]">Loading trip data...</p></div> );
+  }
+
+  if (error) {
+    return ( <div className="bg-[#FDEEEE] border border-[#D14343]/20 rounded-xl p-8 text-center max-w-md mx-auto"><FiAlertCircle className="w-16 h-16 text-[#D14343] mx-auto mb-4" /><h3 className="text-lg font-semibold text-[#D14343] mb-2">Unable to Load Dashboard</h3><Button onClick={fetchDashboardData} className="mt-4">Retry</Button></div> );
+  }
+
+  // ============================================
+  // TRIP IN PROGRESS VIEW
+  // ============================================
   if (isTripStarted && activeTrip) {
     const allDelivered = tripData.orders.every(order => order.delivered);
 
     return (
-      <div className="max-w-4xl mx-auto">
-        {/* Header */}
+      <div className="max-w-4xl mx-auto pb-32">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-semibold text-[#151A17]">Start Trip</h1>
+            <h1 className="text-2xl font-semibold text-[#151A17]">Trip in Progress</h1>
             <p className="text-sm text-[#6B716D] mt-1">{activeTrip.id} - {activeTrip.date}</p>
           </div>
           <Badge variant="info">In Progress</Badge>
         </div>
 
-        {/* Progress */}
+        {/* Progress Bar */}
         <div className="bg-white rounded-xl border border-[#E5E8E6] p-4 mb-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <span className="text-sm text-[#6B716D]">Progress:</span>
               <div className="w-48 h-2 bg-gray-200 rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-[#16834B] transition-all duration-500"
-                  style={{ width: `${totalOrders > 0 ? (getDeliveredCount() / totalOrders) * 100 : 0}%` }}
-                />
+                <div className="h-full bg-[#16834B] transition-all duration-500" style={{ width: `${totalOrders > 0 ? (getDeliveredCount() / totalOrders) * 100 : 0}%` }} />
               </div>
-              <span className="text-sm font-medium text-[#151A17]">
-                {getDeliveredCount()}/{totalOrders} Orders
-              </span>
             </div>
-            <span className="text-sm text-[#6B716D]">
-              {totalOrders > 0 ? Math.round((getDeliveredCount() / totalOrders) * 100) : 0}%
-            </span>
+            <span className="text-sm font-medium">{getDeliveredCount()}/{totalOrders}</span>
           </div>
         </div>
 
         {/* Hens Input */}
         <div className="bg-white rounded-xl border border-[#E5E8E6] p-6 mb-6">
-          <h3 className="font-semibold text-[#151A17] mb-4">Total Hens Loaded</h3>
-          <div className="flex items-center gap-4">
-            <input
-              type="number"
-              value={tripData.totalHens}
-              onChange={(e) => setTripData({ ...tripData, totalHens: e.target.value })}
-              placeholder="Enter total hens"
-              className="w-40 px-4 py-2 border border-[#E5E8E6] rounded-lg focus:ring-2 focus:ring-[#111714] focus:border-transparent outline-none transition"
-              min="0"
-              step="1"
-            />
+          <h3 className="font-semibold text-[#151A17] mb-4 flex justify-between items-center">
+            Total Hens Loaded
+            {isHensLocked && (
+              <button onClick={() => setIsHensLocked(false)} className="flex items-center gap-2 text-sm text-[#16834B] hover:underline">
+                <FiEdit2 className="w-4 h-4" /> Edit
+              </button>
+            )}
+          </h3>
+          <div className="flex items-center flex-wrap gap-4">
+            <div className="relative">
+              <input
+                type="number"
+                value={tripData.totalHens}
+                onChange={(e) => setTripData({ ...tripData, totalHens: e.target.value })}
+                onKeyDown={(e) => { if (e.key === 'Enter') setIsHensLocked(true); }}
+                placeholder="Enter total hens"
+                className={`w-40 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-[#111714] outline-none transition ${isHensLocked ? 'bg-gray-100 text-gray-500 cursor-not-allowed border-gray-200' : 'border-[#E5E8E6]'}`}
+                disabled={isHensLocked}
+                min="0"
+                step="1"
+              />
+              {!isHensLocked && (
+                <button onClick={() => setIsHensLocked(true)} className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-[#16834B] hover:underline">Enter</button>
+              )}
+            </div>
             <span className="text-sm text-[#6B716D]">hens</span>
-            <div className="ml-4 p-2 bg-[#F6F7F6] rounded-lg">
+            <div className="ml-2 p-2 bg-[#F6F7F6] rounded-lg">
               <span className="text-sm text-[#6B716D]">= </span>
-              <span className="font-semibold text-[#151A17]">
-                {totalKgFromHens ? `${totalKgFromHens.toFixed(1)} kg` : '0 kg'}
-              </span>
+              <span className="font-semibold text-[#151A17]">{totalKgFromHens ? `${totalKgFromHens.toFixed(1)} kg` : '0 kg'}</span>
               <span className="text-xs text-[#6B716D] ml-2">(× 0.5)</span>
             </div>
           </div>
         </div>
 
-        {/* Expenses */}
+        {/* Expenses Section */}
         <div className="bg-white rounded-xl border border-[#E5E8E6] p-6 mb-6">
-          <h3 className="font-semibold text-[#151A17] mb-4">Expenses</h3>
+          <h3 className="font-semibold text-[#151A17] mb-4 flex justify-between items-center">
+            Expenses
+            {isDieselLocked && (
+              <button onClick={() => setIsDieselLocked(false)} className="flex items-center gap-2 text-sm text-[#16834B] hover:underline">
+                <FiEdit2 className="w-4 h-4" /> Edit
+              </button>
+            )}
+          </h3>
+
           <div className="space-y-4">
-            <div>
+            {/* Diesel Input */}
+            <div className="relative max-w-xs">
               <label className="block text-sm text-[#6B716D] mb-1.5">Diesel Amount</label>
               <input
                 type="number"
                 value={tripData.dieselAmount}
                 onChange={(e) => setTripData({ ...tripData, dieselAmount: e.target.value })}
+                onKeyDown={(e) => { if (e.key === 'Enter') setIsDieselLocked(true); }}
                 placeholder="Enter diesel amount"
-                className="w-full max-w-xs px-4 py-2 border border-[#E5E8E6] rounded-lg focus:ring-2 focus:ring-[#111714] focus:border-transparent outline-none transition"
+                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-[#111714] outline-none transition ${isDieselLocked ? 'bg-gray-100 text-gray-500 cursor-not-allowed border-gray-200' : 'border-[#E5E8E6]'}`}
+                disabled={isDieselLocked}
                 min="0"
                 step="1"
               />
+              {!isDieselLocked && (
+                <button onClick={() => setIsDieselLocked(true)} className="absolute right-2 bottom-2.5 text-xs text-[#16834B] hover:underline">Enter</button>
+              )}
             </div>
+
+            {/* Diesel Bill Image Upload */}
             <div>
-              <label className="block text-sm text-[#6B716D] mb-1.5">Upload Photo</label>
+              <label className="block text-sm text-[#6B716D] mb-1.5">Upload Bill Image</label>
               <div className="border-2 border-dashed border-[#E5E8E6] rounded-lg p-6 text-center hover:border-[#111714] transition">
                 <input
                   type="file"
@@ -254,6 +276,8 @@ const DriverDashboard = () => {
                   id="diesel-photo"
                   onChange={(e) => {
                     if (e.target.files[0]) {
+                      // In a real app, you would upload this to cloud storage here and get a URL.
+                      // For now, we just show the preview
                       setTripData({ 
                         ...tripData, 
                         dieselPhoto: e.target.files[0],
@@ -264,20 +288,16 @@ const DriverDashboard = () => {
                 />
                 <label htmlFor="diesel-photo" className="cursor-pointer">
                   {tripData.dieselPhotoPreview ? (
-                    <div>
-                      <img 
-                        src={tripData.dieselPhotoPreview} 
-                        alt="Diesel" 
-                        className="w-32 h-32 object-cover mx-auto rounded-lg"
-                      />
-                      <p className="text-sm text-[#16834B] mt-2">Photo uploaded</p>
+                    <div className="relative inline-block">
+                      <img src={tripData.dieselPhotoPreview} alt="Bill" className="w-32 h-32 object-cover mx-auto rounded-lg border border-[#E5E8E6]" />
+                      <button onClick={(e) => { e.preventDefault(); setTripData({ ...tripData, dieselPhoto: null, dieselPhotoPreview: null }); }} className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600">
+                        <FiX className="w-4 h-4" />
+                      </button>
                     </div>
                   ) : (
-                    <div>
-                      <div className="w-12 h-12 bg-[#F6F7F6] rounded-full flex items-center justify-center mx-auto">
-                        <FiTruck className="w-6 h-6 text-[#6B716D]" />
-                      </div>
-                      <p className="text-sm text-[#6B716D] mt-2">Click to upload diesel photo</p>
+                    <div className="flex flex-col items-center">
+                      <FiUploadCloud className="w-12 h-12 text-[#6B716D] mb-2" />
+                      <p className="text-sm text-[#6B716D]">Click to upload diesel bill photo</p>
                     </div>
                   )}
                 </label>
@@ -286,7 +306,7 @@ const DriverDashboard = () => {
           </div>
         </div>
 
-        {/* Orders List */}
+        {/* Orders to Deliver */}
         <div className="space-y-4 mb-6">
           <h3 className="font-semibold text-[#151A17]">Orders to Deliver</h3>
           {tripData.orders.map((order) => (
@@ -295,26 +315,15 @@ const DriverDashboard = () => {
                 <div>
                   <div className="flex items-center gap-3">
                     <h4 className="font-semibold text-[#151A17]">{order.id}</h4>
-                    <Badge variant={order.delivered ? 'success' : 'warning'}>
-                      {order.delivered ? 'Delivered' : 'Pending'}
-                    </Badge>
+                    <Badge variant={order.delivered ? 'success' : 'warning'}>{order.delivered ? 'Delivered' : 'Pending'}</Badge>
                   </div>
                   <p className="text-sm font-medium text-[#151A17] mt-1">{order.retailer}</p>
                 </div>
-                <span className="text-sm font-medium text-[#151A17]">
-                  {formatCurrency(order.amount)}
-                </span>
+                <span className="text-sm font-medium text-[#151A17]">{formatCurrency(order.amount)}</span>
               </div>
-
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-                <div className="flex items-center gap-2 text-sm text-[#6B716D]">
-                  <FiMapPin className="w-4 h-4" />
-                  {order.address}
-                </div>
-                <div className="flex items-center gap-2 text-sm text-[#6B716D]">
-                  <FiPhone className="w-4 h-4" />
-                  {order.phone}
-                </div>
+                <div className="flex items-center gap-2 text-sm text-[#6B716D]"><FiMapPin className="w-4 h-4" />{order.address}</div>
+                <div className="flex items-center gap-2 text-sm text-[#6B716D]"><FiPhone className="w-4 h-4" />{order.phone}</div>
               </div>
 
               {!order.delivered ? (
@@ -322,71 +331,24 @@ const DriverDashboard = () => {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs text-[#6B716D] mb-1">Ordered KG</label>
-                      <input
-                        type="number"
-                        value={order.kg}
-                        disabled
-                        className="w-full px-3 py-2 border border-[#E5E8E6] rounded-lg bg-gray-50 text-[#6B716D]"
-                      />
+                      <input type="number" value={order.kg} disabled className="w-full px-3 py-2 border border-[#E5E8E6] rounded-lg bg-gray-50 text-[#6B716D]" />
                     </div>
                     <div>
                       <label className="block text-xs text-[#6B716D] mb-1">Actual Delivered (KG)</label>
-                      <input
-                        type="number"
-                        value={order.actualKg || ''}
-                        onChange={(e) => updateOrderKg(order.id, e.target.value)}
-                        placeholder="Enter actual kg"
-                        className="w-full px-3 py-2 border border-[#E5E8E6] rounded-lg focus:ring-2 focus:ring-[#111714] focus:border-transparent outline-none transition"
-                        min="0"
-                        step="0.5"
-                      />
-                      {order.actualKg && order.actualKg !== order.kg && (
-                        <p className="text-xs text-[#C47A13] mt-1">
-                          ⚠️ {order.actualKg > order.kg ? '+' : ''}{order.actualKg - order.kg} kg difference
-                        </p>
-                      )}
+                      <input type="number" value={order.actualKg || ''} onChange={(e) => updateOrderKg(order.id, e.target.value)} placeholder="Enter actual kg" className="w-full px-3 py-2 border border-[#E5E8E6] rounded-lg focus:ring-2 focus:ring-[#111714] outline-none transition" min="0" step="0.5" />
                     </div>
                   </div>
                   <div>
                     <label className="block text-xs text-[#6B716D] mb-1">Cash Collected (₹)</label>
-                    <input
-                      type="number"
-                      value={order.cashCollected || ''}
-                      onChange={(e) => updateCashCollected(order.id, e.target.value)}
-                      placeholder="Enter cash collected"
-                      className="w-full px-3 py-2 border border-[#E5E8E6] rounded-lg focus:ring-2 focus:ring-[#111714] focus:border-transparent outline-none transition"
-                      min="0"
-                      step="1"
-                    />
+                    <input type="number" value={order.cashCollected || ''} onChange={(e) => updateCashCollected(order.id, e.target.value)} placeholder="Enter cash collected" className="w-full px-3 py-2 border border-[#E5E8E6] rounded-lg focus:ring-2 focus:ring-[#111714] outline-none transition" min="0" step="1" />
                   </div>
-                  <Button 
-                    size="sm" 
-                    className="w-full mt-2"
-                    onClick={() => handleOrderDelivered(order.id)}
-                  >
-                    <FiCheckCircle className="w-4 h-4 mr-2" />
-                    Mark as Delivered
-                  </Button>
+                  <Button size="sm" className="w-full mt-2" onClick={() => handleOrderDelivered(order.id)}><FiCheckCircle className="w-4 h-4 mr-2" />Mark as Delivered</Button>
                 </div>
               ) : (
                 <div className="pt-3 border-t border-[#E5E8E6]">
                   <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <p className="text-[#6B716D]">Ordered KG</p>
-                      <p className="font-medium text-[#151A17]">{order.kg} kg</p>
-                    </div>
-                    <div>
-                      <p className="text-[#6B716D]">Delivered KG</p>
-                      <p className="font-medium text-[#151A17]">{order.actualKg || order.kg} kg</p>
-                    </div>
-                    <div>
-                      <p className="text-[#6B716D]">Cash Collected</p>
-                      <p className="font-medium text-[#16834B]">{formatCurrency(order.cashCollected || 0)}</p>
-                    </div>
-                    <div>
-                      <p className="text-[#6B716D]">Status</p>
-                      <Badge variant="success">✓ Delivered</Badge>
-                    </div>
+                    <div><p className="text-[#6B716D]">Delivered KG</p><p className="font-medium text-[#151A17]">{order.actualKg || order.kg} kg</p></div>
+                    <div><p className="text-[#6B716D]">Cash Collected</p><p className="font-medium text-[#16834B]">{formatCurrency(order.cashCollected || 0)}</p></div>
                   </div>
                 </div>
               )}
@@ -396,42 +358,15 @@ const DriverDashboard = () => {
 
         {/* Summary & Complete Trip */}
         {getDeliveredCount() > 0 && (
-          <div className="bg-white rounded-xl border border-[#E5E8E6] p-6 sticky bottom-0">
+          <div className="bg-white rounded-xl border border-[#E5E8E6] p-6 sticky bottom-0 shadow-lg">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-              <div className="text-center">
-                <p className="text-xs text-[#6B716D]">Orders</p>
-                <p className="text-lg font-semibold text-[#151A17]">{getDeliveredCount()}/{totalOrders}</p>
-              </div>
-              <div className="text-center">
-                <p className="text-xs text-[#6B716D]">Total KG</p>
-                <p className="text-lg font-semibold text-[#151A17]">{getTotalDeliveredKg().toFixed(1)} kg</p>
-              </div>
-              <div className="text-center">
-                <p className="text-xs text-[#6B716D]">Cash Collected</p>
-                <p className="text-lg font-semibold text-[#16834B]">{formatCurrency(getTotalCashCollected())}</p>
-              </div>
-              <div className="text-center">
-                <p className="text-xs text-[#6B716D]">Total Hens</p>
-                <p className="text-lg font-semibold text-[#151A17]">{tripData.totalHens || 0}</p>
-              </div>
+              <div className="text-center"><p className="text-xs text-[#6B716D]">Orders</p><p className="text-lg font-semibold">{getDeliveredCount()}/{totalOrders}</p></div>
+              <div className="text-center"><p className="text-xs text-[#6B716D]">Total KG</p><p className="text-lg font-semibold">{getTotalDeliveredKg().toFixed(1)} kg</p></div>
+              <div className="text-center"><p className="text-xs text-[#6B716D]">Cash Collected</p><p className="text-lg font-semibold text-[#16834B]">{formatCurrency(getTotalCashCollected())}</p></div>
+              <div className="text-center"><p className="text-xs text-[#6B716D]">Total Hens</p><p className="text-lg font-semibold">{tripData.totalHens || 0}</p></div>
             </div>
-
-            <Button 
-              className="w-full py-3 text-base"
-              onClick={handleCompleteTrip}
-              disabled={!allDelivered}
-            >
-              {allDelivered ? (
-                <>
-                  <FiCheckCircle className="w-5 h-5 mr-2" />
-                  Complete Trip
-                </>
-              ) : (
-                <>
-                  <FiAlertCircle className="w-5 h-5 mr-2" />
-                  Deliver all orders to complete trip
-                </>
-              )}
+            <Button className="w-full py-3 text-base" onClick={handleCompleteTrip} disabled={!allDelivered}>
+              {allDelivered ? <><FiCheckCircle className="w-5 h-5 mr-2" />Complete Trip</> : <><FiAlertCircle className="w-5 h-5 mr-2" />Deliver all orders to complete</>}
             </Button>
           </div>
         )}
@@ -439,96 +374,49 @@ const DriverDashboard = () => {
     );
   }
 
-  // Dashboard View (when no trip is started)
+  // ============================================
+  // DASHBOARD VIEW (No trip started)
+  // ============================================
   return (
     <div className="max-w-4xl mx-auto">
-      {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-semibold text-[#151A17]">
-            {getGreeting()}, {user?.name || 'Driver'} 👋
-          </h1>
-          <p className="text-sm text-[#6B716D] mt-1">
-            {trips.length > 0 ? 'Your assigned trips for today' : 'No trips assigned for today'}
-          </p>
+          <h1 className="text-2xl font-semibold text-[#151A17]">{getGreeting()}, {user?.name || 'Driver'} 👋</h1>
+          <p className="text-sm text-[#6B716D] mt-1">{trips.length > 0 ? 'Your assigned trips for today' : 'No trips assigned for today'}</p>
         </div>
-        <button
-          onClick={() => {
-            logout();
-            navigate('/login');
-          }}
-          className="flex items-center gap-2 px-4 py-2 text-sm text-[#6B716D] hover:text-[#D14343] transition"
-        >
-          <FiLogOut className="w-4 h-4" />
-          Logout
-        </button>
+        <button onClick={() => { logout(); navigate('/login'); }} className="flex items-center gap-2 px-4 py-2 text-sm text-[#6B716D] hover:text-[#D14343] transition"><FiLogOut className="w-4 h-4" />Logout</button>
       </div>
 
-      {/* Stats */}
       <div className="grid grid-cols-3 gap-4 mb-6">
-        <div className="bg-white rounded-xl border border-[#E5E8E6] p-4 text-center">
-          <FiTruck className="w-5 h-5 mx-auto text-[#6B716D] mb-1" />
-          <p className="text-xl font-semibold text-[#151A17]">{trips.length}</p>
-          <p className="text-xs text-[#6B716D]">Trips Today</p>
-        </div>
-        <div className="bg-white rounded-xl border border-[#E5E8E6] p-4 text-center">
-          <FiPackage className="w-5 h-5 mx-auto text-[#6B716D] mb-1" />
-          <p className="text-xl font-semibold text-[#151A17]">{totalOrders}</p>
-          <p className="text-xs text-[#6B716D]">Total Orders</p>
-        </div>
-        <div className="bg-white rounded-xl border border-[#E5E8E6] p-4 text-center">
-          <FiDollarSign className="w-5 h-5 mx-auto text-[#6B716D] mb-1" />
-          <p className="text-xl font-semibold text-[#151A17]">{totalKg} kg</p>
-          <p className="text-xs text-[#6B716D]">Total Weight</p>
-        </div>
+        <div className="bg-white rounded-xl border border-[#E5E8E6] p-4 text-center"><FiTruck className="w-5 h-5 mx-auto text-[#6B716D] mb-1" /><p className="text-xl font-semibold">{trips.length}</p><p className="text-xs text-[#6B716D]">Trips Today</p></div>
+        <div className="bg-white rounded-xl border border-[#E5E8E6] p-4 text-center"><FiPackage className="w-5 h-5 mx-auto text-[#6B716D] mb-1" /><p className="text-xl font-semibold">{totalOrders}</p><p className="text-xs text-[#6B716D]">Total Orders</p></div>
+        <div className="bg-white rounded-xl border border-[#E5E8E6] p-4 text-center"><FiDollarSign className="w-5 h-5 mx-auto text-[#6B716D] mb-1" /><p className="text-xl font-semibold">{totalKg} kg</p><p className="text-xs text-[#6B716D]">Total Weight</p></div>
       </div>
 
-      {/* Assigned Trips */}
       {trips.length > 0 ? (
         <div className="space-y-4">
           {trips.map((trip) => (
             <div key={trip.id} className="bg-white rounded-xl border border-[#E5E8E6] p-6 hover:shadow-md transition">
               <div className="flex items-start justify-between mb-3">
-                <div>
-                  <div className="flex items-center gap-3">
-                    <h3 className="font-semibold text-[#151A17]">{trip.id}</h3>
-                    <Badge variant="info">Assigned</Badge>
-                  </div>
-                  <p className="text-sm text-[#6B716D] mt-1">{trip.date}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm text-[#6B716D]">Orders</p>
-                  <p className="font-semibold text-[#151A17]">{trip.totalOrders}</p>
-                </div>
+                <div><div className="flex items-center gap-3"><h3 className="font-semibold">{trip.id}</h3><Badge variant="info">Assigned</Badge></div><p className="text-sm text-[#6B716D] mt-1">{trip.date}</p></div>
+                <div className="text-right"><p className="text-sm text-[#6B716D]">Orders</p><p className="font-semibold">{trip.totalOrders}</p></div>
               </div>
-
-              {/* Order Previews */}
               <div className="space-y-2 mb-4">
                 {trip.orders.map((order) => (
                   <div key={order.id} className="flex items-center justify-between text-sm bg-[#F6F7F6] p-3 rounded-lg">
-                    <div>
-                      <p className="font-medium text-[#151A17]">{order.retailer}</p>
-                      <p className="text-xs text-[#6B716D]">{order.id} • {order.kg} kg</p>
-                    </div>
-                    <span className="text-sm font-medium text-[#151A17]">{formatCurrency(order.amount)}</span>
+                    <div><p className="font-medium">{order.retailer}</p><p className="text-xs text-[#6B716D]">{order.id} • {order.kg} kg</p></div>
+                    <span className="text-sm font-medium">{formatCurrency(order.amount)}</span>
                   </div>
                 ))}
               </div>
-
-              <Button 
-                className="w-full"
-                onClick={handleStartTrip}
-              >
-                <FiTruck className="w-4 h-4 mr-2" />
-                Start Trip
-              </Button>
+              <Button className="w-full" onClick={handleStartTrip}><FiTruck className="w-4 h-4 mr-2" />Start Trip</Button>
             </div>
           ))}
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-[#E5E8E6] p-12 text-center">
           <FiCheckCircle className="w-12 h-12 mx-auto text-[#16834B] mb-3" />
-          <p className="text-lg font-medium text-[#151A17]">No trips assigned</p>
+          <p className="text-lg font-medium">No trips assigned</p>
           <p className="text-sm text-[#6B716D]">You have no trips scheduled for today</p>
         </div>
       )}

@@ -69,18 +69,23 @@ const getInProgressOrders = async (req, res) => {
         d.name as driver_name,
         d.vehicle_number,
         v.name as vehicle_name,
-        v.number as vehicle_reg
+        v.number as vehicle_reg,
+        -- 🟢 PULL REAL-TIME DELIVERY METRICS FROM trip_orders
+        COALESCE(to_.actual_delivered_kg, 0) as actual_delivered_kg,
+        COALESCE(to_.cash_collected, 0) as cash_collected,
+        to_.delivered_status
       FROM orders o
       JOIN retailers r ON o.retailer_id = r.id
       LEFT JOIN trips t ON o.trip_id = t.id
       LEFT JOIN drivers d ON t.driver_id = d.id
-      LEFT JOIN vehicles v ON d.vehicle_number = v.number
+      LEFT JOIN vehicles v ON d.vehicle_number = v.number  -- ✅ FIXED: Matches d.vehicle_number
+      LEFT JOIN trip_orders to_ ON o.id = to_.order_id
       WHERE o.order_status = 'out_for_delivery'
       AND o.trip_id IS NOT NULL
       ORDER BY o.created_at DESC
     `);
 
-    console.log(`✅ Found ${orders.length} in-progress orders`);
+    console.log(`✅ Found ${orders.length} in-progress orders with trip details`);
     
     res.status(200).json({
       success: true,

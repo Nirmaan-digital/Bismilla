@@ -17,7 +17,8 @@ import Button from '../../components/common/Button';
 import api from '../../services/api';
 
 const RetailerOrderDetails = () => {
-  const { id } = useParams();
+  // ✅ Now reading the Numeric ID (e.g., 4, 11, etc.)
+  const { id } = useParams(); 
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -88,8 +89,14 @@ const RetailerOrderDetails = () => {
     });
   };
 
-  // Get status color
-  const getStatusInfo = (status) => {
+  // Get status color ✅ PRIORITIZE trip_orders delivered_status
+  const getStatusInfo = (status, deliveredStatus) => {
+    // If the trip_orders table says delivered, show Delivered!
+    if (deliveredStatus === 'delivered') {
+      return { color: 'success', label: 'Delivered' };
+    }
+
+    // Otherwise, fallback to the order status
     const statusMap = {
       'pending': { color: 'warning', label: 'Pending' },
       'confirmed': { color: 'primary', label: 'Confirmed' },
@@ -112,7 +119,10 @@ const RetailerOrderDetails = () => {
   };
 
   // Get timeline steps based on order status
-  const getTimeline = (status) => {
+  const getTimeline = (status, deliveredStatus) => {
+    // Determine the actual status to use for the timeline
+    const effectiveStatus = deliveredStatus === 'delivered' ? 'delivered' : status;
+
     const steps = [
       { status: 'Order Placed', key: 'pending' },
       { status: 'Confirmed', key: 'confirmed' },
@@ -122,7 +132,7 @@ const RetailerOrderDetails = () => {
     ];
 
     const statusOrder = ['pending', 'confirmed', 'processing', 'out_for_delivery', 'delivered'];
-    const currentIndex = statusOrder.indexOf(status);
+    const currentIndex = statusOrder.indexOf(effectiveStatus);
     
     return steps.map((step, index) => ({
       ...step,
@@ -173,9 +183,10 @@ const RetailerOrderDetails = () => {
     );
   }
 
-  const statusInfo = getStatusInfo(order.order_status);
+  // 🟢 CHECK: Read delivered_status from trip_orders
+  const statusInfo = getStatusInfo(order.order_status, order.delivered_status);
   const paymentInfo = getPaymentStatusInfo(order.payment_status);
-  const timeline = getTimeline(order.order_status);
+  const timeline = getTimeline(order.order_status, order.delivered_status);
 
   return (
     <div>
@@ -297,6 +308,7 @@ const RetailerOrderDetails = () => {
                   </p>
                 </div>
               </div>
+              {/* ✅ Show delivered date if it exists */}
               {order.delivered_date && (
                 <div className="flex items-center gap-3">
                   <FiCalendar className="w-4 h-4 text-[#16834B]" />
