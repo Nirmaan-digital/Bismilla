@@ -7,7 +7,9 @@ import {
   FiCalendar,
   FiPackage,
   FiLoader,
-  FiAlertCircle
+  FiAlertCircle,
+  FiCheckCircle,
+  FiDollarSign
 } from 'react-icons/fi';
 import Button from '../../components/common/Button';
 import Badge from '../../components/common/Badge';
@@ -56,14 +58,14 @@ const RetailerOrders = () => {
     }
   };
 
-  // ✅ Get filter counts (only for statuses that exist in your data)
+  // ✅ Get filter counts
   const getFilterCounts = () => {
     const all = orders.length;
-    const pending = orders.filter(o => o.order_status === 'pending').length;
-    const processing = orders.filter(o => o.order_status === 'processing' || o.order_status === 'confirmed').length;
-    const enroute = orders.filter(o => o.order_status === 'out_for_delivery').length;
-    const delivered = orders.filter(o => o.order_status === 'delivered').length;
-    const cancelled = orders.filter(o => o.order_status === 'cancelled').length;
+    const pending = orders.filter(o => o.order_status?.toLowerCase() === 'pending').length;
+    const processing = orders.filter(o => o.order_status?.toLowerCase() === 'processing' || o.order_status?.toLowerCase() === 'confirmed').length;
+    const enroute = orders.filter(o => o.order_status?.toLowerCase() === 'out_for_delivery').length;
+    const delivered = orders.filter(o => o.order_status?.toLowerCase() === 'delivered').length;
+    const cancelled = orders.filter(o => o.order_status?.toLowerCase() === 'cancelled').length;
     return { all, pending, processing, enroute, delivered, cancelled };
   };
 
@@ -71,30 +73,18 @@ const RetailerOrders = () => {
 
   // ✅ Filter orders
   const filteredOrders = orders.filter(order => {
-    // Search by order number
     const matchesSearch = order.order_number?.toLowerCase().includes(searchTerm.toLowerCase()) || 
                           order.id?.toString().includes(searchTerm);
     
-    // Filter by status
     let matchesFilter = true;
+    const status = order.order_status?.toLowerCase();
     switch(activeFilter) {
-      case 'pending':
-        matchesFilter = order.order_status === 'pending';
-        break;
-      case 'processing':
-        matchesFilter = order.order_status === 'processing' || order.order_status === 'confirmed';
-        break;
-      case 'enroute':
-        matchesFilter = order.order_status === 'out_for_delivery';
-        break;
-      case 'delivered':
-        matchesFilter = order.order_status === 'delivered';
-        break;
-      case 'cancelled':
-        matchesFilter = order.order_status === 'cancelled';
-        break;
-      default:
-        matchesFilter = true;
+      case 'pending': matchesFilter = status === 'pending'; break;
+      case 'processing': matchesFilter = status === 'processing' || status === 'confirmed'; break;
+      case 'enroute': matchesFilter = status === 'out_for_delivery'; break;
+      case 'delivered': matchesFilter = status === 'delivered'; break;
+      case 'cancelled': matchesFilter = status === 'cancelled'; break;
+      default: matchesFilter = true;
     }
     
     return matchesSearch && matchesFilter;
@@ -123,6 +113,7 @@ const RetailerOrders = () => {
 
   // ✅ Get status color and display text
   const getStatusInfo = (status) => {
+    const s = status?.toLowerCase() || '';
     const statusMap = {
       'pending': { color: 'warning', label: 'Pending' },
       'confirmed': { color: 'primary', label: 'Confirmed' },
@@ -131,17 +122,18 @@ const RetailerOrders = () => {
       'delivered': { color: 'success', label: 'Delivered' },
       'cancelled': { color: 'error', label: 'Cancelled' }
     };
-    return statusMap[status] || { color: 'default', label: status || 'Unknown' };
+    return statusMap[s] || { color: 'default', label: status || 'Unknown' };
   };
 
   // ✅ Get payment status color
   const getPaymentStatusInfo = (status) => {
+    const s = status?.toLowerCase() || '';
     const paymentMap = {
       'paid': { color: 'success', label: 'Paid' },
       'partial': { color: 'warning', label: 'Partial' },
       'pending': { color: 'error', label: 'Pending' }
     };
-    return paymentMap[status] || { color: 'default', label: status || 'Unknown' };
+    return paymentMap[s] || { color: 'default', label: status || 'Unknown' };
   };
 
   // ✅ Loading state
@@ -269,6 +261,8 @@ const RetailerOrders = () => {
           filteredOrders.map((order) => {
             const statusInfo = getStatusInfo(order.order_status);
             const paymentInfo = getPaymentStatusInfo(order.payment_status);
+            const isDelivered = order.order_status?.toLowerCase() === 'delivered';
+            const isPartiallyPaid = order.cash_collected > 0 && order.cash_collected < order.total_amount;
             
             return (
               <div key={order.id} className="bg-white rounded-xl border border-[#E5E8E6] p-4 hover:shadow-md transition">
@@ -291,14 +285,43 @@ const RetailerOrders = () => {
                       </span>
                       <span className="flex items-center gap-1">
                         <FiPackage className="w-3 h-3" />
-                        {order.kg_ordered} kg
+                        {order.kg_ordered} kg ordered
                       </span>
                       <span className="font-medium text-[#151A17]">
                         {formatCurrency(order.total_amount)}
                       </span>
-                      {order.kg_delivered > 0 && (
-                        <span className="text-xs text-[#16834B]">
-                          ✓ {order.kg_delivered} kg delivered
+                      
+                      {/* ✅ REAL DELIVERED DATA FROM trip_orders */}
+                      {isDelivered && (
+                        <div className="flex flex-wrap items-center gap-3">
+                          {/* Delivered KG with Green Tag */}
+                          <span className="text-xs flex items-center gap-1 text-[#16834B] bg-[#E8F5E9] px-3 py-1 rounded-full">
+                            <FiCheckCircle className="w-3 h-3" />
+                            {order.kg_delivered || order.kg_ordered} kg delivered
+                            {order.delivered_date && (
+                              <> on {formatDate(order.delivered_date)}</>
+                            )}
+                          </span>
+                          
+                          {/* Cash Collected */}
+                          {order.cash_collected > 0 && (
+                            <span className={`text-xs flex items-center gap-1 px-3 py-1 rounded-full ${
+                              isPartiallyPaid 
+                                ? 'text-[#C47A13] bg-[#FFF8E1]' 
+                                : 'text-[#16834B] bg-[#E8F5E9]'
+                            }`}>
+                              <FiDollarSign className="w-3 h-3" />
+                              {formatCurrency(order.cash_collected)} collected
+                              {isPartiallyPaid && ` (${Math.round((order.cash_collected / order.total_amount) * 100)}%)`}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Show trip number if assigned */}
+                      {order.trip_number && (
+                        <span className="text-xs text-[#6B716D] border border-[#E5E8E6] px-2 py-1 rounded-full">
+                          Trip: {order.trip_number}
                         </span>
                       )}
                     </div>
@@ -312,15 +335,13 @@ const RetailerOrders = () => {
                   </div>
                   
                   <div className="flex items-center gap-2 ml-4">
+                    {/* 🔥 CRITICAL FIX: Use Numeric order.id in URL */}
                     <Link to={`/retailer/orders/${order.id}`}>
                       <Button variant="ghost" size="sm">
                         <FiEye className="w-4 h-4 mr-1" />
                         View
                       </Button>
                     </Link>
-                    <button className="p-2 hover:bg-gray-100 rounded-lg transition">
-                      <FiFileText className="w-4 h-4 text-[#6B716D]" />
-                    </button>
                   </div>
                 </div>
               </div>

@@ -25,6 +25,7 @@ const RetailerDashboard = () => {
   console.log('🔗 RetailerDashboard API URL:', API_URL);
 
   const [loading, setLoading] = useState(true);
+  const [priceLoading, setPriceLoading] = useState(true); // Specific loading for price
   const [retailer, setRetailer] = useState(null);
   const [stats, setStats] = useState({
     totalOrders: 0,
@@ -61,7 +62,7 @@ const RetailerDashboard = () => {
         'Content-Type': 'application/json'
       };
 
-      // Get retailer info
+      // 1. Get retailer info
       console.log('📋 Fetching retailer info...');
       const retailerResponse = await axios.get(`${API_URL}/retailers/me`, { headers });
       console.log('✅ Retailer response:', retailerResponse.data);
@@ -73,7 +74,7 @@ const RetailerDashboard = () => {
         throw new Error(retailerResponse.data.message || 'Failed to load retailer info');
       }
 
-      // Get retailer stats
+      // 2. Get retailer stats
       console.log('📊 Fetching retailer stats...');
       const statsResponse = await axios.get(`${API_URL}/retailers/stats`, { headers });
       console.log('✅ Stats response:', statsResponse.data);
@@ -83,7 +84,7 @@ const RetailerDashboard = () => {
         console.log('✅ Stats loaded:', statsResponse.data.data);
       }
 
-      // Get orders
+      // 3. Get orders
       console.log('📋 Fetching orders...');
       const ordersResponse = await axios.get(`${API_URL}/retailers/orders`, { headers });
       console.log('✅ Orders response:', ordersResponse.data);
@@ -102,16 +103,27 @@ const RetailerDashboard = () => {
         console.log(`✅ ${orders.length} orders loaded`);
       }
 
-      // Get current pricing
+      // 4. Get CURRENT PRICING (Updated to get Retailer Specific Price)
       try {
-        console.log('📊 Fetching pricing...');
-        const pricingResponse = await axios.get(`${API_URL}/pricing/current`);
+        setPriceLoading(true);
+        console.log('📊 Fetching pricing for this retailer...');
+        
+        // ✅ UPDATED: This endpoint automatically checks if this retailer has a custom price
+        const pricingResponse = await axios.get(`${API_URL}/pricing/retailer-price`, { headers });
+        
         console.log('✅ Pricing response:', pricingResponse.data);
         if (pricingResponse.data.success) {
-          setPricePerKg(pricingResponse.data.data.price_per_kg || 188);
+          setPricePerKg(pricingResponse.data.price);
+        } else {
+          // Fallback if API succeeds but data is missing
+          setPricePerKg(188);
         }
       } catch (pricingError) {
-        console.log('ℹ️ Using default pricing:', pricingError.message);
+        console.log('ℹ️ Falling back to default pricing:', pricingError.message);
+        // Fallback if request fails
+        setPricePerKg(188);
+      } finally {
+        setPriceLoading(false);
       }
 
     } catch (error) {
@@ -251,10 +263,19 @@ const RetailerDashboard = () => {
         <p className="text-sm text-[#6B716D] mt-1">{retailer?.shop_name || 'Your Shop'}</p>
       </div>
 
-      {/* Pricing Card - Cash Price */}
-      <div className="bg-[#111714] text-white rounded-xl p-6 mb-6">
+      {/* Pricing Card - Cash Price (UPDATED with loading state) */}
+      <div className="bg-[#111714] text-white rounded-xl p-6 mb-6 relative">
         <p className="text-sm text-white/60">CASH PRICE</p>
-        <p className="text-3xl font-bold mt-1">₹{pricePerKg}</p>
+        
+        {priceLoading ? (
+          <div className="flex items-center mt-1">
+            <FiLoader className="w-6 h-6 animate-spin text-white/60 mr-2" />
+            <p className="text-xl font-bold animate-pulse text-white/60">Loading...</p>
+          </div>
+        ) : (
+          <p className="text-3xl font-bold mt-1">₹{pricePerKg}</p>
+        )}
+        
         <p className="text-xs text-white/40 mt-1">per kg (UPI / Cash)</p>
       </div>
 

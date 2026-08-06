@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   FiDollarSign, 
   FiCheckCircle, 
@@ -13,135 +13,61 @@ import {
   FiFilter,
   FiDownload,
   FiCheck,
-  FiX
+  FiX,
+  FiLoader
 } from 'react-icons/fi';
 import Button from '../../components/common/Button';
 import Badge from '../../components/common/Badge';
 import Modal from '../../components/common/Modal';
 import SearchInput from '../../components/common/SearchInput';
 import EmptyState from '../../components/common/EmptyState';
-import { formatCurrency, formatDate } from '../../data/mockData';
-
-// Mock cash collections awaiting verification
-const mockCashCollections = [
-  {
-    id: 'COL-001',
-    orderId: 'ORD-1001',
-    retailer: 'Sharma Chicken Corner',
-    retailerPhone: '9876543210',
-    driver: 'Sameer Khan',
-    driverPhone: '9876543220',
-    amount: 15000,
-    method: 'Cash',
-    date: '24 Jul 2026',
-    time: '10:30 AM',
-    status: 'pending',
-    tripId: 'TRIP-001',
-    notes: 'Retailer paid cash at delivery',
-    proofImage: null,
-  },
-  {
-    id: 'COL-002',
-    orderId: 'ORD-1005',
-    retailer: 'Khan Poultry',
-    retailerPhone: '9876543211',
-    driver: 'Sameer Khan',
-    driverPhone: '9876543220',
-    amount: 41360,
-    method: 'Cash',
-    date: '24 Jul 2026',
-    time: '11:45 AM',
-    status: 'pending',
-    tripId: 'TRIP-001',
-    notes: 'Full payment received in cash',
-    proofImage: null,
-  },
-  {
-    id: 'COL-003',
-    orderId: 'ORD-1003',
-    retailer: 'Reddy Fresh Meats',
-    retailerPhone: '9876543212',
-    driver: 'Salim Ahmed',
-    driverPhone: '9876543221',
-    amount: 50000,
-    method: 'Cash',
-    date: '23 Jul 2026',
-    time: '09:15 AM',
-    status: 'pending',
-    tripId: 'TRIP-002',
-    notes: 'Partial payment - remaining to be collected',
-    proofImage: null,
-  },
-  {
-    id: 'COL-004',
-    orderId: 'ORD-1007',
-    retailer: 'Gupta Poultry House',
-    retailerPhone: '9876543214',
-    driver: 'Ganesh Rao',
-    driverPhone: '9876543222',
-    amount: 56400,
-    method: 'Cash',
-    date: '23 Jul 2026',
-    time: '02:30 PM',
-    status: 'pending',
-    tripId: 'TRIP-003',
-    notes: 'Cash collected',
-    proofImage: null,
-  },
-];
-
-// Mock verified collections (history)
-const mockVerifiedCollections = [
-  {
-    id: 'COL-005',
-    orderId: 'ORD-1002',
-    retailer: 'Reddy Fresh Meats',
-    retailerPhone: '9876543212',
-    driver: 'Ramesh Kumar',
-    driverPhone: '9876543220',
-    amount: 28200,
-    method: 'Cash',
-    date: '23 Jul 2026',
-    time: '10:00 AM',
-    status: 'verified',
-    tripId: 'TRIP-004',
-    verifiedBy: 'Admin',
-    verifiedDate: '23 Jul 2026',
-    notes: 'Payment verified',
-  },
-  {
-    id: 'COL-006',
-    orderId: 'ORD-1004',
-    retailer: 'Patel Chicken',
-    retailerPhone: '9876543213',
-    driver: 'Ramesh Kumar',
-    driverPhone: '9876543220',
-    amount: 22560,
-    method: 'Cash',
-    date: '22 Jul 2026',
-    time: '11:30 AM',
-    status: 'verified',
-    tripId: 'TRIP-005',
-    verifiedBy: 'Admin',
-    verifiedDate: '22 Jul 2026',
-    notes: 'Payment verified',
-  },
-];
+import api from '../../services/api';
 
 const CashVerification = () => {
-  const [pendingCollections, setPendingCollections] = useState(mockCashCollections);
-  const [verifiedCollections] = useState(mockVerifiedCollections);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [pendingCollections, setPendingCollections] = useState([]);
+  const [verifiedCollections, setVerifiedCollections] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCollection, setSelectedCollection] = useState(null);
   const [isVerificationModalOpen, setIsVerificationModalOpen] = useState(false);
-  const [filterStatus, setFilterStatus] = useState('all');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState('pending'); // 'pending' or 'verified'
+
+  // ============================================
+  // FETCH DATA FROM API
+  // ============================================
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const fetchData = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const pendingRes = await api.get('/cash-verification/pending');
+      const verifiedRes = await api.get('/cash-verification/verified');
+      
+      if (pendingRes.data.success) {
+        setPendingCollections(pendingRes.data.data);
+      }
+      if (verifiedRes.data.success) {
+        setVerifiedCollections(verifiedRes.data.data);
+      }
+    } catch (err) {
+      console.error('Error fetching cash verifications:', err);
+      setError('Failed to load verification data');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Filter pending collections
   const filteredPending = pendingCollections.filter(c => {
-    const matchesSearch = c.orderId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          c.retailer.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          c.driver.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = c.order_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          c.retailer?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          c.driver_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          c.trip_number?.toLowerCase().includes(searchTerm.toLowerCase());
     return matchesSearch;
   });
 
@@ -152,7 +78,17 @@ const CashVerification = () => {
       currency: 'INR',
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
-    }).format(amount);
+    }).format(amount || 0);
+  };
+
+  // Format date
+  const formatDate = (dateString) => {
+    if (!dateString) return '-';
+    return new Date(dateString).toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric'
+    });
   };
 
   // Handle verify payment
@@ -161,44 +97,68 @@ const CashVerification = () => {
     setIsVerificationModalOpen(true);
   };
 
-  // Confirm verification
-  const confirmVerification = () => {
-    // Move from pending to verified
-    const updatedPending = pendingCollections.filter(c => c.id !== selectedCollection.id);
-    setPendingCollections(updatedPending);
-    
-    // Add to verified list (in real app, this would be an API call)
-    const verifiedCollection = {
-      ...selectedCollection,
-      status: 'verified',
-      verifiedBy: 'Admin',
-      verifiedDate: new Date().toLocaleDateString('en-IN', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric'
-      }),
-    };
-    
-    // Here you would also update the retailer's outstanding balance
-    // and update the ledger
-    
-    setIsVerificationModalOpen(false);
-    setSelectedCollection(null);
-    alert(`Payment of ${formatCurrency(selectedCollection.amount)} verified successfully!`);
+  // Confirm verification - DEDUCTS OUTSTANDING
+  const confirmVerification = async () => {
+    setIsSubmitting(true);
+    try {
+      const response = await api.post('/cash-verification/verify', {
+        verificationId: selectedCollection.verification_id,
+        orderId: selectedCollection.order_id,
+        amount: selectedCollection.amount
+      });
+
+      if (response.data.success) {
+        setIsVerificationModalOpen(false);
+        setSelectedCollection(null);
+        alert(`✅ Payment of ${formatCurrency(selectedCollection.amount)} verified successfully!`);
+        fetchData(); // Refresh the data
+      }
+    } catch (err) {
+      console.error('Error verifying payment:', err);
+      alert('Failed to verify payment. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // Handle reject payment
-  const handleRejectPayment = (collection) => {
-    if (window.confirm(`Are you sure you want to reject this payment of ${formatCurrency(collection.amount)}?`)) {
-      const updatedPending = pendingCollections.filter(c => c.id !== collection.id);
-      setPendingCollections(updatedPending);
-      alert(`Payment rejected. Driver will be notified.`);
+  const handleRejectPayment = async (collection) => {
+    // For now, just remove from list (In real app, delete from DB or mark as rejected)
+    if (window.confirm(`Are you sure you want to reject this payment?`)) {
+      // Optimistic UI update
+      setPendingCollections(prev => prev.filter(c => c.verification_id !== collection.verification_id));
+      alert('Payment rejected.');
     }
   };
 
   // Calculate totals
-  const totalPending = pendingCollections.reduce((sum, c) => sum + c.amount, 0);
-  const totalVerified = verifiedCollections.reduce((sum, c) => sum + c.amount, 0);
+  const totalPending = pendingCollections.reduce((sum, c) => sum + parseFloat(c.amount || 0), 0);
+  const totalVerified = verifiedCollections.reduce((sum, c) => sum + parseFloat(c.amount || 0), 0);
+
+  // ============================================
+  // LOADING STATE
+  // ============================================
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20">
+        <FiLoader className="w-12 h-12 animate-spin text-[#16834B]" />
+        <p className="mt-4 text-[#6B716D]">Loading verification data...</p>
+      </div>
+    );
+  }
+
+  // ============================================
+  // ERROR STATE
+  // ============================================
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20">
+        <FiAlertCircle className="w-12 h-12 text-[#D14343]" />
+        <p className="mt-4 text-[#D14343] font-medium">{error}</p>
+        <Button onClick={fetchData} className="mt-4">Retry</Button>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -209,8 +169,8 @@ const CashVerification = () => {
           <p className="text-sm text-[#6B716D] mt-1">Verify cash payments collected by drivers</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" icon={FiDownload}>
-            Export
+          <Button variant="outline" onClick={fetchData}>
+            Refresh
           </Button>
         </div>
       </div>
@@ -281,12 +241,14 @@ const CashVerification = () => {
         <SearchInput
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="Search by order ID, retailer, or driver..."
+          placeholder="Search by order, trip, retailer, or driver..."
           className="max-w-md"
         />
       </div>
 
-      {/* Pending Collections Table */}
+      {/* ============================================
+          PENDING COLLECTIONS TABLE
+      ============================================ */}
       {activeTab === 'pending' && (
         <div className="bg-white rounded-xl border border-[#E5E8E6] overflow-hidden">
           {filteredPending.length > 0 ? (
@@ -294,7 +256,7 @@ const CashVerification = () => {
               <table className="w-full">
                 <thead className="bg-[#F6F7F6]">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B716D] uppercase tracking-wider">Collection ID</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B716D] uppercase tracking-wider">Trip</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B716D] uppercase tracking-wider">Order</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B716D] uppercase tracking-wider">Retailer</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B716D] uppercase tracking-wider">Driver</th>
@@ -306,24 +268,23 @@ const CashVerification = () => {
                 </thead>
                 <tbody className="divide-y divide-[#E5E8E6]">
                   {filteredPending.map((collection) => (
-                    <tr key={collection.id} className="hover:bg-[#F6F7F6] transition">
-                      <td className="px-6 py-4 text-sm font-medium text-[#151A17]">{collection.id}</td>
-                      <td className="px-6 py-4 text-sm text-[#6B716D]">{collection.orderId}</td>
+                    <tr key={collection.verification_id} className="hover:bg-[#F6F7F6] transition">
+                      <td className="px-6 py-4 text-sm font-medium text-[#151A17]">{collection.trip_number}</td>
+                      <td className="px-6 py-4 text-sm text-[#6B716D]">{collection.order_number}</td>
                       <td className="px-6 py-4">
                         <div>
                           <p className="text-sm font-medium text-[#151A17]">{collection.retailer}</p>
-                          <p className="text-xs text-[#6B716D]">{collection.retailerPhone}</p>
+                          <p className="text-xs text-[#6B716D]">{collection.retailer_phone}</p>
                         </div>
                       </td>
                       <td className="px-6 py-4">
                         <div>
-                          <p className="text-sm text-[#151A17]">{collection.driver}</p>
-                          <p className="text-xs text-[#6B716D]">{collection.driverPhone}</p>
+                          <p className="text-sm text-[#151A17]">{collection.driver_name}</p>
+                          <p className="text-xs text-[#6B716D]">{collection.driver_phone}</p>
                         </div>
                       </td>
                       <td className="px-6 py-4 text-sm text-[#6B716D]">
-                        {collection.date}
-                        <p className="text-xs">{collection.time}</p>
+                        {formatDate(collection.submitted_at)}
                       </td>
                       <td className="px-6 py-4 text-right text-sm font-medium text-[#16834B]">
                         {formatCurrency(collection.amount)}
@@ -364,7 +325,9 @@ const CashVerification = () => {
         </div>
       )}
 
-      {/* Verified Collections Table */}
+      {/* ============================================
+          VERIFIED COLLECTIONS TABLE
+      ============================================ */}
       {activeTab === 'verified' && (
         <div className="bg-white rounded-xl border border-[#E5E8E6] overflow-hidden">
           {verifiedCollections.length > 0 ? (
@@ -372,7 +335,7 @@ const CashVerification = () => {
               <table className="w-full">
                 <thead className="bg-[#F6F7F6]">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B716D] uppercase tracking-wider">Collection ID</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B716D] uppercase tracking-wider">Trip</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B716D] uppercase tracking-wider">Order</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B716D] uppercase tracking-wider">Retailer</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B716D] uppercase tracking-wider">Driver</th>
@@ -383,20 +346,17 @@ const CashVerification = () => {
                 </thead>
                 <tbody className="divide-y divide-[#E5E8E6]">
                   {verifiedCollections.map((collection) => (
-                    <tr key={collection.id} className="hover:bg-[#F6F7F6] transition">
-                      <td className="px-6 py-4 text-sm font-medium text-[#151A17]">{collection.id}</td>
-                      <td className="px-6 py-4 text-sm text-[#6B716D]">{collection.orderId}</td>
+                    <tr key={collection.verification_id} className="hover:bg-[#F6F7F6] transition">
+                      <td className="px-6 py-4 text-sm font-medium text-[#151A17]">{collection.trip_number}</td>
+                      <td className="px-6 py-4 text-sm text-[#6B716D]">{collection.order_number}</td>
                       <td className="px-6 py-4">
                         <div>
                           <p className="text-sm font-medium text-[#151A17]">{collection.retailer}</p>
-                          <p className="text-xs text-[#6B716D]">{collection.retailerPhone}</p>
+                          <p className="text-xs text-[#6B716D]">{collection.retailer_phone}</p>
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-sm text-[#151A17]">{collection.driver}</td>
-                      <td className="px-6 py-4 text-sm text-[#6B716D]">
-                        {collection.verifiedBy}
-                        <p className="text-xs">{collection.verifiedDate}</p>
-                      </td>
+                      <td className="px-6 py-4 text-sm text-[#151A17]">{collection.driver_name}</td>
+                      <td className="px-6 py-4 text-sm text-[#6B716D]">Admin</td>
                       <td className="px-6 py-4 text-right text-sm font-medium text-[#16834B]">
                         {formatCurrency(collection.amount)}
                       </td>
@@ -428,21 +388,36 @@ const CashVerification = () => {
         title="Verify Cash Payment"
         description="Confirm the cash payment collected by driver"
         footer={
-          <>
+          <div className="flex w-full gap-3">
             <Button 
               variant="outline" 
+              className="flex-1"
               onClick={() => {
                 setIsVerificationModalOpen(false);
                 setSelectedCollection(null);
               }}
+              disabled={isSubmitting}
             >
               Cancel
             </Button>
-            <Button onClick={confirmVerification}>
-              <FiCheckCircle className="w-4 h-4 mr-2" />
-              Verify Payment
+            <Button 
+              className="flex-1"
+              onClick={confirmVerification}
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? (
+                <>
+                  <FiLoader className="w-4 h-4 mr-2 animate-spin" />
+                  Verifying...
+                </>
+              ) : (
+                <>
+                  <FiCheckCircle className="w-4 h-4 mr-2" />
+                  Verify & Deduct Balance
+                </>
+              )}
             </Button>
-          </>
+          </div>
         }
       >
         {selectedCollection && (
@@ -450,8 +425,8 @@ const CashVerification = () => {
             {/* Payment Details */}
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-[#F6F7F6] rounded-lg p-3">
-                <p className="text-xs text-[#6B716D]">Order ID</p>
-                <p className="font-medium text-[#151A17]">{selectedCollection.orderId}</p>
+                <p className="text-xs text-[#6B716D]">Trip</p>
+                <p className="font-medium text-[#151A17]">{selectedCollection.trip_number}</p>
               </div>
               <div className="bg-[#F6F7F6] rounded-lg p-3">
                 <p className="text-xs text-[#6B716D]">Amount</p>
@@ -463,42 +438,22 @@ const CashVerification = () => {
             <div className="bg-[#F6F7F6] rounded-lg p-3">
               <p className="text-xs text-[#6B716D]">Retailer</p>
               <p className="font-medium text-[#151A17]">{selectedCollection.retailer}</p>
-              <p className="text-sm text-[#6B716D]">{selectedCollection.retailerPhone}</p>
+              <p className="text-sm text-[#6B716D]">{selectedCollection.retailer_phone}</p>
             </div>
 
             {/* Driver Info */}
             <div className="bg-[#F6F7F6] rounded-lg p-3">
               <p className="text-xs text-[#6B716D]">Collected By (Driver)</p>
-              <p className="font-medium text-[#151A17]">{selectedCollection.driver}</p>
-              <p className="text-sm text-[#6B716D]">{selectedCollection.driverPhone}</p>
+              <p className="font-medium text-[#151A17]">{selectedCollection.driver_name}</p>
+              <p className="text-sm text-[#6B716D]">{selectedCollection.driver_phone}</p>
             </div>
-
-            {/* Collection Details */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-[#F6F7F6] rounded-lg p-3">
-                <p className="text-xs text-[#6B716D]">Date</p>
-                <p className="font-medium text-[#151A17]">{selectedCollection.date}</p>
-              </div>
-              <div className="bg-[#F6F7F6] rounded-lg p-3">
-                <p className="text-xs text-[#6B716D]">Time</p>
-                <p className="font-medium text-[#151A17]">{selectedCollection.time}</p>
-              </div>
-            </div>
-
-            {/* Notes */}
-            {selectedCollection.notes && (
-              <div className="bg-[#F6F7F6] rounded-lg p-3">
-                <p className="text-xs text-[#6B716D]">Notes</p>
-                <p className="text-sm text-[#151A17]">{selectedCollection.notes}</p>
-              </div>
-            )}
 
             {/* Verification Notice */}
             <div className="bg-[#EAF7EF] rounded-lg p-3 border border-[#16834B]/20">
               <div className="flex items-center gap-2">
                 <FiAlertCircle className="w-4 h-4 text-[#16834B]" />
                 <p className="text-sm text-[#16834B]">
-                  Verifying this payment will deduct it from the retailer's outstanding balance
+                  Verifying this payment will deduct ₹{selectedCollection.amount} from the retailer's outstanding balance
                 </p>
               </div>
             </div>

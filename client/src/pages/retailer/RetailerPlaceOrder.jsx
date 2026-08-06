@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   FiShoppingBag, 
@@ -27,18 +27,53 @@ const RetailerPlaceOrder = () => {
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [notes, setNotes] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isPageLoading, setIsPageLoading] = useState(true);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
   const [orderData, setOrderData] = useState(null);
   const [placedOrder, setPlacedOrder] = useState(null);
 
-  // Mock data - will come from API
-  const pricePerKg = 188;
-  const outstanding = 130000;
-
-  const totalAmount = kg ? parseFloat(kg) * pricePerKg : 0;
+  // LIVE DATA STATES
+  const [pricePerKg, setPricePerKg] = useState(0);
+  const [outstanding, setOutstanding] = useState(0);
+  const [dataError, setDataError] = useState(null);
 
   const quickKgOptions = [50, 100, 200, 300, 500];
+
+  // FETCH LIVE PRICE & OUTSTANDING ON LOAD
+  useEffect(() => {
+    const fetchLiveData = async () => {
+      setIsPageLoading(true);
+      setDataError(null);
+      try {
+        // 1. Get Retailer Specific Price
+        const priceRes = await api.get('/pricing/retailer-price');
+        if (priceRes.data.success) {
+          setPricePerKg(priceRes.data.price);
+        } else {
+          setPricePerKg(188); // Fallback
+        }
+
+        // 2. Get Outstanding Balance
+        const statsRes = await api.get('/retailers/stats');
+        if (statsRes.data.success) {
+          setOutstanding(statsRes.data.data.outstandingBalance || 0);
+        }
+
+      } catch (err) {
+        console.error('Error loading place order data:', err);
+        setDataError('Failed to load pricing/outstanding data.');
+        setPricePerKg(188); // Fallback
+        setOutstanding(0);  // Fallback
+      } finally {
+        setIsPageLoading(false);
+      }
+    };
+
+    fetchLiveData();
+  }, []);
+
+  const totalAmount = kg ? parseFloat(kg) * pricePerKg : 0;
 
   const handlePlaceOrder = () => {
     setError(null);
@@ -94,11 +129,11 @@ const RetailerPlaceOrder = () => {
       // Close modal
       setIsConfirmModalOpen(false);
       
-      // ✅ Store the order details - CONVERT totalAmount to NUMBER
+      // Store the order details
       const orderDetails = {
         orderNumber: response.data.data.order_number,
         kg: orderData.kg,
-        totalAmount: parseFloat(response.data.data.total_amount) || 0, // ✅ Fixed: Convert to number
+        totalAmount: parseFloat(response.data.data.total_amount) || 0,
         paymentMethod: orderData.paymentMethod,
         deliveryAddress: orderData.deliveryAddress,
         notes: orderData.notes,
@@ -108,7 +143,6 @@ const RetailerPlaceOrder = () => {
 
       console.log('📋 Setting placedOrder:', orderDetails);
       
-      // ✅ Set the placedOrder state
       setPlacedOrder(orderDetails);
       
       // Reset form
@@ -117,6 +151,12 @@ const RetailerPlaceOrder = () => {
       setNotes('');
       setCustomAmount('');
       setOrderData(null);
+
+      // REFETCH THE OUTSTANDING BALANCE AFTER ORDER IS PLACED
+      const statsRes = await api.get('/retailers/stats');
+      if (statsRes.data.success) {
+        setOutstanding(statsRes.data.data.outstandingBalance || 0);
+      }
 
     } catch (error) {
       console.error('❌ Order placement error:', error);
@@ -162,12 +202,25 @@ const RetailerPlaceOrder = () => {
   };
 
   // ============================================
+  // LOADING STATE
+  // ============================================
+  if (isPageLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <FiLoader className="w-12 h-12 animate-spin text-[#16834B] mx-auto mb-4" />
+          <p className="text-[#6B716D]">Loading order page...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // ============================================
   // ✅ SUCCESS PAGE - Shows after order is placed
   // ============================================
   if (placedOrder) {
     console.log('🎉 Rendering success page with:', placedOrder);
     
-    // ✅ Ensure totalAmount is a number
     const totalAmountDisplay = typeof placedOrder.totalAmount === 'number' 
       ? placedOrder.totalAmount 
       : parseFloat(placedOrder.totalAmount) || 0;
@@ -240,6 +293,19 @@ const RetailerPlaceOrder = () => {
           </div>
         </div>
 
+        {/* Updated Outstanding Card */}
+        <div className="bg-[#E8F5E9] border border-[#16834B]/30 rounded-xl p-4 mb-6">
+          <div className="flex items-center gap-3">
+            <FiCheckCircle className="w-5 h-5 text-[#16834B]" />
+            <div>
+              <p className="text-sm font-medium text-[#151A17]">Updated Outstanding Balance</p>
+              <p className="text-xl font-bold text-[#16834B]">
+                {formatCurrency(outstanding)}
+              </p>
+            </div>
+          </div>
+        </div>
+
         {/* Status Card */}
         <div className="bg-[#F6F7F6] rounded-xl p-4 mb-6">
           <div className="flex items-center gap-3">
@@ -297,7 +363,17 @@ const RetailerPlaceOrder = () => {
         </div>
       )}
 
-      {/* Outstanding Warning */}
+      {/* Data Error Message */}
+      {dataError && (
+        <div className="bg-[#FFF3CD] border border-[#FFC107] rounded-xl p-4 mb-6">
+          <div className="flex items-center gap-2">
+            <FiAlertCircle className="w-5 h-5 text-[#D14343]" />
+            <p className="text-sm text-[#151A17]">{dataError} Using default fallback values.</p>
+          </div>
+        </div>
+      )}
+
+      {/* Outstanding Warning - LIVE DATA */}
       <div className="bg-[#FDEEEE] border border-[#D14343] rounded-xl p-4 mb-6">
         <div className="flex items-center gap-2">
           <FiAlertCircle className="w-5 h-5 text-[#D14343]" />
@@ -427,7 +503,7 @@ const RetailerPlaceOrder = () => {
           )}
         </button>
 
-        {/* ✅ Custom Amount - Only Show for UPI */}
+        {/* Custom Amount - Only Show for UPI */}
         {kg && parseFloat(kg) > 0 && selectedPayment === 'upi' && (
           <div className="mt-4 p-4 bg-[#F6F7F6] rounded-lg">
             <p className="text-sm text-[#6B716D] mb-2">
@@ -474,10 +550,11 @@ const RetailerPlaceOrder = () => {
         <div className="flex items-center justify-between mb-4">
           <div>
             <p className="text-sm text-[#6B716D]">TOTAL</p>
+            {/* ✅ FIXED: Using {pricePerKg} variable dynamically */}
             <p className="text-sm text-[#6B716D]">
               {kg && parseFloat(kg) > 0 
                 ? `${kg} kg × ₹${pricePerKg}`
-                : '0 kg × ₹188'}
+                : `0 kg × ₹${pricePerKg}`}
             </p>
             <p className="text-xs text-[#6B716D] mt-1">
               Payment: {selectedPayment === 'upi' ? 'UPI' : 'Cash'}
