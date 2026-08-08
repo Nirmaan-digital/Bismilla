@@ -23,11 +23,10 @@ const PORT = process.env.PORT || 5000;
 
 // CORS configuration - Allow multiple origins
 const allowedOrigins = [
-  'https://yellow-butterfly-972674.hostingersite.com',
-  'https://yellow-butterfly-972674.hostingsite.com',
+  'https://bismillahchickencenter.com',
+  'https://www.bismillahchickencenter.com',
   'http://localhost:5173',
-  'http://localhost:3000',
-  'http://localhost:5000'
+  'http://localhost:3000'
 ];
 
 // Middleware - CORS handles OPTIONS requests automatically
@@ -82,6 +81,28 @@ app.use('/api/reports', reportRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/driver', driverRoutes);
 app.use('/api/cash-verification', cashVerificationRoutes); // ✅ MOUNTED: Cash Verification routes
+
+// Add this temporary debug route
+app.get('/api/debug-routes', (req, res) => {
+  const routes = [];
+  
+  // Get all registered routes
+  app._router.stack.forEach((layer) => {
+    if (layer.route) {
+      const methods = Object.keys(layer.route.methods).join(', ').toUpperCase();
+      routes.push({
+        path: layer.route.path,
+        methods: methods
+      });
+    }
+  });
+  
+  res.json({
+    success: true,
+    totalRoutes: routes.length,
+    routes: routes
+  });
+});
 
 // 404 handler
 app.use((req, res) => {
