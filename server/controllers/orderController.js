@@ -162,8 +162,21 @@ const createOrder = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ ERROR in createOrder:', error);
-        console.error('❌ Error Message:', error.message);
+        console.error('=================================');
+        console.error('❌ DATABASE ERROR - DETAILED REPORT');
+        console.error('=================================');
+        console.error('Error Message:', error.message);
+        console.error('Error Code:', error.code);
+        
+        // This prints the exact SQL that failed!
+        if (error.sql) {
+            console.error('🔴 FAILED SQL QUERY:', error.sql);
+        }
+
+        if (error.sqlMessage) {
+            console.error('🔴 SQL ERROR MESSAGE:', error.sqlMessage);
+        }
+        
         console.log('=================================');
         
         if (connection) {

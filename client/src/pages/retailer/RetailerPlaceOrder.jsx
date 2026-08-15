@@ -17,6 +17,7 @@ import {
 import Button from '../../components/common/Button';
 import Modal from '../../components/common/Modal';
 import api from '../../services/api';
+import { startCheckout, redirectToGateway } from '../../services/paymentService'; // ✅ Imported new payment service
 
 const RetailerPlaceOrder = () => {
   const navigate = useNavigate();
@@ -96,7 +97,8 @@ const RetailerPlaceOrder = () => {
       paymentMethod: selectedPayment === 'upi' ? 'UPI' : 'Cash',
       deliveryAddress: deliveryAddress || 'Not provided',
       notes: notes || 'No notes',
-      customAmount: customAmount ? parseFloat(customAmount) : null
+      // If UPI is selected, customAmount is the actual amount to pay. If empty, pay full.
+      customAmount: selectedPayment === 'upi' ? (customAmount ? parseFloat(customAmount) : totalAmount) : null
     };
     
     setOrderData(orderSummary);
@@ -152,7 +154,32 @@ const RetailerPlaceOrder = () => {
       setCustomAmount('');
       setOrderData(null);
 
-      // REFETCH THE OUTSTANDING BALANCE AFTER ORDER IS PLACED
+      // 🔥 CRITICAL: Handle the gateway redirect for UPI payments
+      if (selectedPayment === 'upi' && orderData.customAmount > 0) {
+        try {
+          console.log(`💳 Initiating payment of ₹${orderData.customAmount} via Stripe...`);
+          
+          // We use the newly imported paymentService to start checkout
+          const paymentResponse = await startCheckout({ 
+            amount: orderData.customAmount 
+          });
+
+          if (paymentResponse.success && paymentResponse.data.redirect_url) {
+            // Redirect the user to Stripe Checkout hosted page
+            redirectToGateway(paymentResponse.data.redirect_url);
+            return; // Stop execution here, redirect handles the rest
+          } else {
+            throw new Error('Failed to get payment redirect URL');
+          }
+        } catch (paymentError) {
+          console.error('❌ Payment processing error:', paymentError);
+          // If payment fails, we show an alert but keep the order placed in the database
+          alert('Order placed, but payment initiation failed. Please go to the Payments page to complete payment later.');
+          // Fallback to the normal success page if payment fails
+        }
+      }
+
+      // REFETCH THE OUTSTANDING BALANCE AFTER ORDER IS PLACED (For Cash payments)
       const statsRes = await api.get('/retailers/stats');
       if (statsRes.data.success) {
         setOutstanding(statsRes.data.data.outstandingBalance || 0);
@@ -163,11 +190,8 @@ const RetailerPlaceOrder = () => {
       
       if (error.response) {
         setError(error.response.data.message || 'Failed to place order');
-        console.error('Response data:', error.response.data);
-        console.error('Response status:', error.response.status);
       } else if (error.request) {
         setError('No response from server. Please check if backend is running.');
-        console.error('Request:', error.request);
       } else {
         setError(error.message || 'Failed to place order. Please try again.');
       }
@@ -216,9 +240,9 @@ const RetailerPlaceOrder = () => {
   }
 
   // ============================================
-  // ✅ SUCCESS PAGE - Shows after order is placed
+  // ✅ SUCCESS PAGE - Shows after order is placed (Only for CASH payments)
   // ============================================
-  if (placedOrder) {
+  if (placedOrder && selectedPayment === 'cash') {
     console.log('🎉 Rendering success page with:', placedOrder);
     
     const totalAmountDisplay = typeof placedOrder.totalAmount === 'number' 
@@ -273,14 +297,6 @@ const RetailerPlaceOrder = () => {
                 <span className="text-sm text-[#6B716D]">📝 Notes</span>
                 <span className="font-medium text-[#151A17] text-right max-w-[50%]">
                   {placedOrder.notes}
-                </span>
-              </div>
-            )}
-            {placedOrder.customAmount && placedOrder.customAmount > 0 && (
-              <div className="flex items-center justify-between py-2 border-b border-[#F6F7F6]">
-                <span className="text-sm text-[#6B716D]">💳 Partial Payment</span>
-                <span className="font-medium text-[#3B6FD8]">
-                  ₹{placedOrder.customAmount.toFixed(0)}
                 </span>
               </div>
             )}
@@ -550,7 +566,6 @@ const RetailerPlaceOrder = () => {
         <div className="flex items-center justify-between mb-4">
           <div>
             <p className="text-sm text-[#6B716D]">TOTAL</p>
-            {/* ✅ FIXED: Using {pricePerKg} variable dynamically */}
             <p className="text-sm text-[#6B716D]">
               {kg && parseFloat(kg) > 0 
                 ? `${kg} kg × ₹${pricePerKg}`
@@ -683,17 +698,6 @@ const RetailerPlaceOrder = () => {
                     <span className="font-medium text-[#151A17] text-right max-w-[60%]">
                       {orderData.notes}
                     </span>
-                  </div>
-                )}
-
-                {orderData.customAmount && orderData.customAmount > 0 && (
-                  <div className="mt-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                    <p className="text-sm text-[#3B6FD8]">
-                      💳 Partial Payment: ₹{orderData.customAmount.toFixed(0)} of ₹{orderData.totalAmount.toFixed(0)}
-                    </p>
-                    <p className="text-xs text-[#6B716D] mt-1">
-                      Remaining balance: ₹{(orderData.totalAmount - orderData.customAmount).toFixed(0)}
-                    </p>
                   </div>
                 )}
               </div>

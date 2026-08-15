@@ -15,6 +15,7 @@ const reportRoutes = require('./routes/reports');
 const settingsRoutes = require('./routes/settings');
 const driverRoutes = require('./routes/driver');
 const cashVerificationRoutes = require('./routes/cashVerification'); // ✅ ADDED: Cash Verification routes
+const paymentRoutes = require('./routes/payments'); // 💳 ADDED: Online payments (Stripe / Razorpay)
 
 dotenv.config();
 
@@ -46,13 +47,18 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 
+// 💳 PAYMENT WEBHOOK - MUST be mounted before express.json().
+// Signature verification needs the exact bytes the gateway signed. Once
+// express.json() parses and re-serialises the body, the signature breaks.
+app.use('/api/payments/webhook', express.raw({ type: '*/*' }));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Request logging middleware
 app.use((req, res, next) => {
   console.log(`📝 ${req.method} ${req.url}`);
-  if (req.body && Object.keys(req.body).length > 0) {
+  if (req.body && !Buffer.isBuffer(req.body) && Object.keys(req.body).length > 0) {
     console.log('📦 Body:', { ...req.body, password: req.body.password ? '********' : undefined });
   }
   next();
@@ -81,6 +87,7 @@ app.use('/api/reports', reportRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/driver', driverRoutes);
 app.use('/api/cash-verification', cashVerificationRoutes); // ✅ MOUNTED: Cash Verification routes
+app.use('/api/payments', paymentRoutes); // 💳 MOUNTED: Online payments
 
 // Add this temporary debug route
 app.get('/api/debug-routes', (req, res) => {
@@ -150,4 +157,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`  → http://localhost:${PORT}/api/cash-verification/pending`); // ✅ Added
   console.log(`  → http://localhost:${PORT}/api/cash-verification/verified`); // ✅ Added
   console.log(`  → http://localhost:${PORT}/api/cash-verification/verify`); // ✅ Added
+  console.log(`  → http://localhost:${PORT}/api/payments/summary`); // 💳 Added
+  console.log(`  → http://localhost:${PORT}/api/payments/checkout`); // 💳 Added
+  console.log(`  → http://localhost:${PORT}/api/payments/webhook`); // 💳 Added
 });

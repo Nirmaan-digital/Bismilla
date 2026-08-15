@@ -27,6 +27,7 @@ import RetailerPlaceOrder from '../pages/retailer/RetailerPlaceOrder';
 import RetailerOrders from '../pages/retailer/RetailerOrders';
 import RetailerOrderDetails from '../pages/retailer/RetailerOrderDetails';
 import RetailerPayments from '../pages/retailer/RetailerPayments';
+import PaymentResult from '../pages/retailer/PaymentResult';
 import RetailerProfile from '../pages/retailer/RetailerProfile';
 
 // Driver Pages
@@ -87,6 +88,7 @@ const AppRoutes = () => {
             <Route path="/retailer/orders" element={<RetailerOrders />} />
             <Route path="/retailer/orders/:id" element={<RetailerOrderDetails />} />
             <Route path="/retailer/payments" element={<RetailerPayments />} />
+            <Route path="/retailer/payment/result" element={<PaymentResult />} />
             <Route path="/retailer/profile" element={<RetailerProfile />} />
           </Route>
         </Route>
