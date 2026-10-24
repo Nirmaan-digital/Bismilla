@@ -6,6 +6,14 @@ import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
 import Logo from '../brand/Logo';
 import BrandLoader from '../brand/BrandLoader';
+import DesignedBy from '../brand/DesignedBy';
+import NotificationBell from './NotificationBell';
+import {
+  disablePush,
+  initPushListeners,
+  resumePush,
+  setNotificationTapHandler,
+} from '../../services/pushNotifications';
 
 const flatten = (groups) => groups.flatMap((g) => g.items);
 
@@ -105,6 +113,9 @@ const SidebarContent = ({ groups, portal, onNavigate, onLogout, displayName, rol
           <FiLogOut className="w-4 h-4" />
         </button>
       </div>
+      <div className="mt-3 text-center">
+        <DesignedBy tone="dark" />
+      </div>
     </div>
   </div>
 );
@@ -160,7 +171,17 @@ const AppShell = ({ groups, portal, profilePath, refreshProfile = false }) => {
     );
   }, [groups, location.pathname]);
 
-  const handleLogout = () => {
+  // Push alerts: keep this device registered for the signed-in user, and
+  // open the right page when an alert is tapped in the Android app.
+  useEffect(() => {
+    initPushListeners();
+    setNotificationTapHandler((link) => navigate(link));
+    resumePush();
+  }, [navigate]);
+
+  const handleLogout = async () => {
+    // Stop this device receiving this user's alerts before signing out.
+    await disablePush();
     logout();
     navigate('/login');
   };
@@ -253,6 +274,8 @@ const AppShell = ({ groups, portal, profilePath, refreshProfile = false }) => {
             </div>
 
             <div className="flex items-center gap-2 sm:gap-3">
+              <NotificationBell />
+
               <div className="hidden md:flex items-center gap-2 px-3.5 py-2 rounded-full bg-gold-soft border border-gold/20 text-xs font-medium text-gold-dark">
                 <FiCalendar className="w-3.5 h-3.5" />
                 {today}
@@ -312,19 +335,23 @@ const AppShell = ({ groups, portal, profilePath, refreshProfile = false }) => {
           </div>
         </header>
 
-        <main className="relative flex-1 overflow-y-auto">
+        <main className="relative flex-1 overflow-y-auto flex flex-col">
           <div className="pointer-events-none absolute inset-x-0 top-0 h-64 bg-gradient-to-b from-gold-soft/70 to-transparent" />
           <motion.div
             key={location.pathname}
             initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-            className="relative p-4 sm:p-6 lg:p-8"
+            className="relative flex-1 p-4 sm:p-6 lg:p-8"
           >
             <Suspense fallback={<BrandLoader />}>
               <Outlet />
             </Suspense>
           </motion.div>
+          <footer className="relative flex flex-col sm:flex-row items-center justify-between gap-2 px-4 sm:px-6 lg:px-8 py-4 border-t border-line/70 text-[11px] text-muted">
+            <span>© {new Date().getFullYear()} Bismillah Chicken Center, Bhimavaram</span>
+            <DesignedBy />
+          </footer>
         </main>
       </div>
     </div>

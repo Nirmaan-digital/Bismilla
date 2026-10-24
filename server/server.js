@@ -8,6 +8,7 @@ const cors = require('cors');
 const path = require('path');
 const zlib = require('zlib');
 const ensureIndexes = require('./config/ensureIndexes');
+const { ensureNotificationTables } = require('./services/notificationService');
 const {
   securityHeaders,
   scrubServerErrors,
@@ -55,6 +56,7 @@ const paymentRoutes = require('./routes/payments'); // 💳 Online payments (Str
 const expensesRoutes = require('./routes/expenses'); // admin trip expenses view
 const salariesRoutes = require('./routes/salaries'); // admin driver/staff salary tracking
 const tripOverviewRoutes = require('./routes/tripOverview'); // admin loaded-vs-delivered reconciliation
+const notificationRoutes = require('./routes/notifications'); // in-app + push alerts
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -86,12 +88,19 @@ const allowedOrigins = (
   .map((o) => o.trim())
   .filter(Boolean);
 
+const APP_ORIGINS = ['https://localhost', 'capacitor://localhost', 'http://localhost'];
+
 app.use(
   cors({
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
 
       if (allowedOrigins.includes(origin)) return callback(null, true);
+
+      // The Android app (Capacitor) loads its bundled pages from these
+      // origins. Always allowed so ALLOWED_ORIGINS on the host doesn't have
+      // to be edited for the app; requests still need a valid login token.
+      if (APP_ORIGINS.includes(origin)) return callback(null, true);
 
       if (IS_DEV && /^http:\/\/localhost(:\d+)?$/.test(origin)) {
         return callback(null, true);
@@ -241,6 +250,7 @@ app.use('/api/payments', paymentRoutes); // 💳 Online payments
 app.use('/api/expenses', expensesRoutes);
 app.use('/api/salaries', salariesRoutes);
 app.use('/api/trip-overview', tripOverviewRoutes); // admin loaded-vs-delivered reconciliation
+app.use('/api/notifications', notificationRoutes);
 
 // The old /api/debug-routes handler read app._router, which no longer exists
 // in Express 5 — it would have thrown. It also published the full route map
@@ -290,6 +300,7 @@ app.use((err, req, res, next) => {
 // ============================================
 app.listen(PORT, '0.0.0.0', () => {
   ensureIndexes();
+  ensureNotificationTables();
   console.log(`✔ Server running on port ${PORT} (${IS_DEV ? 'development' : 'production'})`);
   console.log(`💳 Payment provider: ${process.env.PAYMENT_PROVIDER || 'stripe'}`);
   console.log(`🌐 Allowed origins: ${allowedOrigins.join(', ')}`);
