@@ -118,25 +118,56 @@ const getVapidKeys = () => {
 
 // --------------------------------------------
 // Firebase Cloud Messaging (HTTP v1) — no SDK, just a signed JWT.
-// FCM_SERVICE_ACCOUNT can be the service-account JSON itself, the same
-// JSON base64-encoded, or a path to the .json file.
+//
+// Credentials, either:
+//   FCM_SERVICE_ACCOUNT = the service-account JSON, the same JSON
+//                         base64-encoded, or a path to the .json file; or
+//   FCM_PROJECT_ID + FCM_CLIENT_EMAIL + FCM_PRIVATE_KEY_1..N
+//                       = the same values split into short variables, for
+//                         hosting panels that limit a variable's length.
+//                         FCM_PRIVATE_KEY_n are consecutive pieces of the
+//                         key's base64 body (no BEGIN/END lines).
 // --------------------------------------------
+const accountFromParts = () => {
+  const { FCM_PROJECT_ID, FCM_CLIENT_EMAIL } = process.env;
+  if (!FCM_PROJECT_ID || !FCM_CLIENT_EMAIL) return null;
+  let body = process.env.FCM_PRIVATE_KEY || '';
+  for (let i = 1; process.env[`FCM_PRIVATE_KEY_${i}`]; i++) body += process.env[`FCM_PRIVATE_KEY_${i}`];
+  body = body.replace(/-----[^-]+-----/g, '').replace(/\\n|\s/g, '');
+  if (!body) return null;
+  const lines = body.match(/.{1,64}/g).join('\n');
+  return {
+    project_id: FCM_PROJECT_ID.trim(),
+    client_email: FCM_CLIENT_EMAIL.trim(),
+    private_key: `-----BEGIN PRIVATE KEY-----\n${lines}\n-----END PRIVATE KEY-----\n`,
+  };
+};
+
 let fcmAccount;
 const getFcmAccount = () => {
   if (fcmAccount !== undefined) return fcmAccount;
   fcmAccount = null;
   const raw = (process.env.FCM_SERVICE_ACCOUNT || '').trim();
-  if (!raw) return null;
   try {
-    let text = raw;
-    if (!raw.startsWith('{')) {
-      text = fs.existsSync(raw) ? fs.readFileSync(raw, 'utf8') : Buffer.from(raw, 'base64').toString('utf8');
+    let json = null;
+    if (raw) {
+      let text = raw;
+      if (!raw.startsWith('{')) {
+        text = fs.existsSync(raw) ? fs.readFileSync(raw, 'utf8') : Buffer.from(raw, 'base64').toString('utf8');
+      }
+      json = JSON.parse(text);
+    } else {
+      json = accountFromParts();
     }
-    const json = JSON.parse(text);
-    if (json.client_email && json.private_key && json.project_id) fcmAccount = json;
-    else console.error('❌ FCM_SERVICE_ACCOUNT is missing client_email/private_key/project_id');
+    if (!json) return null;
+    if (json.client_email && json.private_key && json.project_id) {
+      crypto.createPrivateKey(json.private_key); // fail early on a damaged key
+      fcmAccount = json;
+    } else {
+      console.error('❌ FCM credentials are missing client_email/private_key/project_id');
+    }
   } catch (error) {
-    console.error('❌ FCM_SERVICE_ACCOUNT could not be read:', error.message);
+    console.error('❌ FCM credentials could not be read:', error.message);
   }
   return fcmAccount;
 };
