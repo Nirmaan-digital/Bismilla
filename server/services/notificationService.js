@@ -213,7 +213,15 @@ const sendFcm = async (token, msg) => {
         data: { link: msg.link || '', type: msg.type || 'general' },
         android: {
           priority: 'HIGH',
-          notification: { channel_id: 'bcc_alerts', color: '#A61B24', sound: 'default' },
+          notification: {
+            channel_id: 'bcc_alerts',
+            color: '#A61B24',
+            sound: 'default',
+            default_sound: true,
+            default_vibrate_timings: true,
+            notification_priority: 'PRIORITY_HIGH',
+            visibility: 'PUBLIC',
+          },
         },
       },
     }),

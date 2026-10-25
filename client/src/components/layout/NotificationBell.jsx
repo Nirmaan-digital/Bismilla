@@ -14,6 +14,7 @@ import {
 } from 'react-icons/fi';
 import api from '../../services/api';
 import { enablePush, pushPermission, pushSupported } from '../../services/pushNotifications';
+import { playChime } from '../../services/chime';
 
 const POLL_MS = 30 * 1000;
 
@@ -46,7 +47,7 @@ const NotificationBell = () => {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const ref = useRef(null);
-  const lastUnread = useRef(0);
+  const lastUnread = useRef(null);
 
   const load = useCallback(async () => {
     try {
@@ -55,6 +56,8 @@ const NotificationBell = () => {
       if (!data) return;
       setItems(data.items);
       setUnread(data.unread);
+      // A new alert arrived since the last check: play the chime.
+      if (lastUnread.current !== null && data.unread > lastUnread.current) playChime();
       lastUnread.current = data.unread;
     } catch {
       /* offline or logged out — try again next tick */
@@ -85,6 +88,7 @@ const NotificationBell = () => {
   const markAllRead = async () => {
     setItems((list) => list.map((n) => ({ ...n, read_at: n.read_at || new Date().toISOString() })));
     setUnread(0);
+    lastUnread.current = 0;
     try {
       await api.post('/notifications/read', { all: true });
     } catch {
@@ -97,6 +101,7 @@ const NotificationBell = () => {
     if (!n.read_at) {
       setItems((list) => list.map((x) => (x.id === n.id ? { ...x, read_at: new Date().toISOString() } : x)));
       setUnread((u) => Math.max(0, u - 1));
+      if (lastUnread.current) lastUnread.current -= 1;
       api.post('/notifications/read', { ids: [n.id] }).catch(() => {});
     }
     if (n.link) navigate(n.link);

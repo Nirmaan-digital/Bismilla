@@ -8,6 +8,9 @@ import Logo from '../brand/Logo';
 import BrandLoader from '../brand/BrandLoader';
 import DesignedBy from '../brand/DesignedBy';
 import NotificationBell from './NotificationBell';
+import NotificationPrompt from './NotificationPrompt';
+import OfflineBanner from './OfflineBanner';
+import { clearOfflineStore } from '../../services/httpCache';
 import {
   disablePush,
   initPushListeners,
@@ -182,6 +185,7 @@ const AppShell = ({ groups, portal, profilePath, refreshProfile = false }) => {
   const handleLogout = async () => {
     // Stop this device receiving this user's alerts before signing out.
     await disablePush();
+    clearOfflineStore();
     logout();
     navigate('/login');
   };
@@ -334,6 +338,9 @@ const AppShell = ({ groups, portal, profilePath, refreshProfile = false }) => {
             </div>
           </div>
         </header>
+
+        <OfflineBanner />
+        <NotificationPrompt />
 
         <main className="relative flex-1 overflow-y-auto flex flex-col">
           <div className="pointer-events-none absolute inset-x-0 top-0 h-64 bg-gradient-to-b from-gold-soft/70 to-transparent" />
