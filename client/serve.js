@@ -58,6 +58,9 @@ app.use((req, res, next) => {
   next();
 });
 
+// Short link for the privacy policy (used in the Play Store listing).
+app.get(['/privacy', '/privacy-policy'], (req, res) => res.redirect(301, '/privacy.html'));
+
 // Real built files (JS, CSS, images, favicon, etc.) — served as-is, with
 // long-lived caching since Vite fingerprints filenames on every build.
 app.use(

@@ -4,7 +4,7 @@
    - Push: shows alerts from the server even when the website is closed,
      with sound, and opens the right page when one is tapped. */
 
-const CACHE = 'bcc-shell-v2';
+const CACHE = 'bcc-shell-v3';
 const SHELL = ['/', '/index.html', '/logo.png', '/icon-192.png', '/favicon-32.png', '/manifest.webmanifest'];
 
 self.addEventListener('install', (event) => {
@@ -35,6 +35,10 @@ self.addEventListener('fetch', (event) => {
 
   // Pages: always try the network first so a new deploy shows up at once;
   // fall back to the saved copy when offline.
+  // Standalone pages (privacy.html): straight from the network, never stored
+  // as the app shell.
+  if (url.pathname.endsWith('.html') && url.pathname !== '/index.html') return;
+
   if (request.mode === 'navigate') {
     event.respondWith(
       (async () => {
