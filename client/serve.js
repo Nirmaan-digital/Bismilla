@@ -19,6 +19,7 @@
 // and set the PORT it gives you as an environment variable.
 // ============================================
 
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import express from 'express';
@@ -85,8 +86,29 @@ app.use(
 // index.html. React Router takes over from there. (Express 5 dropped the
 // bare '*' route pattern — a plain catch-all middleware works for any
 // version.)
+// While a deploy is still building (or a build failed and dist/ is empty),
+// show a branded "updating" page that retries by itself, instead of a bare
+// "Not Found".
+const UPDATING_PAGE = `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="20">
+<title>Bismillah Chicken Center</title><style>
+body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#15110e;color:#fbf8f2;
+font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;text-align:center;padding:24px;box-sizing:border-box}
+h1{font-family:Georgia,serif;font-weight:500;color:#e9c77b;letter-spacing:.12em;margin:0 0 12px;font-size:28px}
+p{color:#c9bba6;margin:6px 0;line-height:1.6}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#c9973f;
+margin:18px 4px 0;animation:b 1.2s infinite}.dot:nth-child(2){animation-delay:.2s}.dot:nth-child(3){animation-delay:.4s}
+@keyframes b{0%,80%,100%{opacity:.25}40%{opacity:1}}</style></head><body><div>
+<h1>BISMILLAH</h1><p>We're updating the website.</p><p>This page will refresh by itself in a few seconds.</p>
+<span class="dot"></span><span class="dot"></span><span class="dot"></span></div></body></html>`;
+
 app.use((req, res) => {
-  res.sendFile(path.join(DIST_DIR, 'index.html'));
+  const indexFile = path.join(DIST_DIR, 'index.html');
+  if (!fs.existsSync(indexFile)) {
+    res.status(503).setHeader('Retry-After', '20');
+    res.setHeader('Cache-Control', 'no-store');
+    return res.type('html').send(UPDATING_PAGE);
+  }
+  res.sendFile(indexFile);
 });
 
 app.listen(PORT, () => {
