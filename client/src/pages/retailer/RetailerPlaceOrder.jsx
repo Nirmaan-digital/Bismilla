@@ -169,6 +169,19 @@ const RetailerPlaceOrder = () => {
       );
       return;
     }
+
+    // Partial UPI payment: must be at least ₹1 and not more than the total.
+    if (selectedPayment === 'upi' && customAmount !== '') {
+      const partial = parseFloat(customAmount);
+      if (!(partial >= 1)) {
+        setError('Enter at least ₹1 to pay now, or leave the amount empty to pay in full.');
+        return;
+      }
+      if (partial > Math.round(totalAmount * 100) / 100) {
+        setError(`You can pay at most ₹${totalAmount.toFixed(0)} for this order.`);
+        return;
+      }
+    }
     
     const orderSummary = {
       hens: henCount,
@@ -221,7 +234,12 @@ const RetailerPlaceOrder = () => {
       // (server/services/paymentService.js). If checkout can't be started,
       // the order stays pending and they can pay it from the Payments page.
       if (selectedPayment === 'upi') {
-        const checkoutRes = await startCheckout({ orderId: newOrder.id });
+        // Only the amount the retailer chose to pay now; the rest stays as
+        // the order's balance. Empty (or the full total) pays everything.
+        const total = parseFloat(newOrder.total_amount ?? newOrder.totalAmount ?? orderData.totalAmount) || orderData.totalAmount;
+        const partial = orderData.customAmount;
+        const payNow = partial && partial > 0 && partial < total ? parseFloat(partial.toFixed(2)) : undefined;
+        const checkoutRes = await startCheckout({ orderId: newOrder.id, amount: payNow });
         if (checkoutRes.success && checkoutRes.data.redirect_url) {
           // Remember this attempt so that if the browser comes straight
           // back here (Back button, closed the gateway tab, etc.) instead
