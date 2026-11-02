@@ -7,6 +7,7 @@ import {
   FiAlertCircle,
 } from 'react-icons/fi';
 import { getPaymentStatus, cancelCheckout } from '../../services/paymentService';
+import InvoiceButton from '../../components/common/InvoiceButton';
 
 // The gateway sends the customer back here. The webhook is what actually
 // updates the books, so this page polls until the transaction settles.
@@ -160,6 +161,15 @@ const PaymentResult = () => {
 
         {status !== 'checking' && (
           <div className="flex flex-col gap-2 mt-6">
+            {status === 'success' && txn?.payment_id && (
+              <InvoiceButton
+                payment={{ id: txn.payment_id, payment_number: reference }}
+                label="Download invoice"
+                size="lg"
+                variant="gold"
+                className="w-full"
+              />
+            )}
             <button
               onClick={() => navigate('/retailer/payments')}
               className="w-full px-4 py-2.5 rounded-lg bg-success text-white font-medium hover:bg-success-dark transition"

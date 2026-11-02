@@ -7,6 +7,7 @@ import {
   FiLock,
 } from 'react-icons/fi';
 import Badge from '../../components/common/Badge';
+import InvoiceButton from '../../components/common/InvoiceButton';
 import {
   getPaymentSummary,
   getPaymentHistory,
@@ -362,10 +363,19 @@ const RetailerPayments = () => {
                     Method
                   </th>
                   <th className="px-6 py-3 text-right text-xs font-semibold text-muted uppercase tracking-wider">
-                    Amount
+                    Balance Before
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-semibold text-muted uppercase tracking-wider">
+                    Amount Paid
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-semibold text-muted uppercase tracking-wider">
+                    Balance Due
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-muted uppercase tracking-wider">
                     Status
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-semibold text-muted uppercase tracking-wider">
+                    Invoice
                   </th>
                 </tr>
               </thead>
@@ -387,13 +397,22 @@ const RetailerPayments = () => {
                     <td className="px-6 py-4 text-sm text-muted capitalize">
                       {payment.method || 'N/A'}
                     </td>
-                    <td className="px-6 py-4 text-right text-sm font-medium text-success">
+                    <td className="px-6 py-4 text-right text-sm text-ink whitespace-nowrap">
+                      {payment.balance_before != null ? formatCurrency(payment.balance_before) : '—'}
+                    </td>
+                    <td className="px-6 py-4 text-right text-sm font-semibold text-success whitespace-nowrap">
                       {formatCurrency(payment.amount)}
+                    </td>
+                    <td className={`px-6 py-4 text-right text-sm font-semibold whitespace-nowrap ${parseFloat(payment.balance_after) >= 1 ? 'text-brand' : 'text-success'}`}>
+                      {payment.balance_after != null ? formatCurrency(payment.balance_after) : '—'}
                     </td>
                     <td className="px-6 py-4">
                       <Badge variant={getStatusVariant(payment.status)}>
                         {payment.status || 'Pending'}
                       </Badge>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <InvoiceButton payment={payment} />
                     </td>
                   </tr>
                 ))}

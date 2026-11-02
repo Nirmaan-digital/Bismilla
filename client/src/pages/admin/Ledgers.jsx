@@ -23,6 +23,8 @@ import Badge from '../../components/common/Badge';
 import Modal from '../../components/common/Modal';
 import SearchInput from '../../components/common/SearchInput';
 import EmptyState from '../../components/common/EmptyState';
+import InvoiceButton from '../../components/common/InvoiceButton';
+import PaymentSuccessModal from '../../components/common/PaymentSuccessModal';
 import api from '../../services/api';
 import BrandLoader from '../../components/brand/BrandLoader';
 
@@ -61,6 +63,8 @@ const Ledgers = () => {
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('Cash');
   const [submitting, setSubmitting] = useState(false);
+  const [retailerPayments, setRetailerPayments] = useState([]); // payments + invoices for the open ledger
+  const [justRecorded, setJustRecorded] = useState(null);
 
   // Transaction History filters (inside the ledger detail modal)
   const [historyTypeFilter, setHistoryTypeFilter] = useState('all');
@@ -179,6 +183,13 @@ const Ledgers = () => {
     setHistoryRangeFrom('');
     setHistoryRangeTo('');
     
+    // Payments (each with an invoice) for this retailer
+    setRetailerPayments([]);
+    api
+      .get('/payments', { params: { retailer_id: retailer.id } })
+      .then((res) => setRetailerPayments(res.data?.data || []))
+      .catch(() => setRetailerPayments([]));
+
     // Fetch transactions for this retailer
     const orderTransactions = await fetchRetailerTransactions(retailer.id);
 
@@ -340,7 +351,15 @@ const Ledgers = () => {
         throw new Error(response.data.message || 'Failed to record payment');
       }
 
-      alert(`✅ Payment of ${formatCurrency(amount)} recorded successfully!`);
+      const saved = response.data.data || {};
+      setJustRecorded({
+        id: saved.payment_id,
+        payment_number: saved.payment_number,
+        shop_name: selectedRetailer.shop || selectedRetailer.name,
+        amount: saved.processedAmount,
+        balance_before: (parseFloat(saved.newOutstanding) || 0) + (parseFloat(saved.processedAmount) || 0),
+        balance_after: saved.newOutstanding,
+      });
       setIsPaymentModalOpen(false);
 
       // Refresh everything from the server -- opening balance + bills now
@@ -700,6 +719,49 @@ const Ledgers = () => {
               </div>
             )}
 
+            {/* Payments & invoices */}
+            {retailerPayments.length > 0 && (
+              <div className="mb-6">
+                <h4 className="font-medium text-ink mb-3">Payments &amp; Invoices</h4>
+                <div className="border border-line rounded-lg overflow-x-auto max-h-72 overflow-y-auto">
+                  <table className="w-full">
+                    <thead className="bg-cream sticky top-0">
+                      <tr>
+                        <th className="px-4 py-2 text-left text-xs font-semibold text-muted uppercase">Payment</th>
+                        <th className="px-4 py-2 text-left text-xs font-semibold text-muted uppercase">Date</th>
+                        <th className="px-4 py-2 text-right text-xs font-semibold text-muted uppercase">Balance Before</th>
+                        <th className="px-4 py-2 text-right text-xs font-semibold text-muted uppercase">Paid</th>
+                        <th className="px-4 py-2 text-right text-xs font-semibold text-muted uppercase">Balance Due</th>
+                        <th className="px-4 py-2 text-right text-xs font-semibold text-muted uppercase">Invoice</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-line">
+                      {retailerPayments.map((p) => (
+                        <tr key={p.id} className="hover:bg-cream transition">
+                          <td className="px-4 py-2 text-sm font-medium text-ink whitespace-nowrap">{p.payment_number}</td>
+                          <td className="px-4 py-2 text-sm text-muted whitespace-nowrap">
+                            {new Date(p.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                          </td>
+                          <td className="px-4 py-2 text-right text-sm text-ink whitespace-nowrap">
+                            {p.balance_before != null ? formatCurrency(p.balance_before) : '—'}
+                          </td>
+                          <td className="px-4 py-2 text-right text-sm font-semibold text-success whitespace-nowrap">
+                            {formatCurrency(p.amount)}
+                          </td>
+                          <td className={`px-4 py-2 text-right text-sm font-semibold whitespace-nowrap ${parseFloat(p.balance_after) >= 1 ? 'text-brand' : 'text-success'}`}>
+                            {p.balance_after != null ? formatCurrency(p.balance_after) : '—'}
+                          </td>
+                          <td className="px-4 py-2 text-right">
+                            <InvoiceButton payment={p} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
             {/* Transaction History */}
             <div>
               <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
@@ -852,6 +914,8 @@ const Ledgers = () => {
           </div>
         )}
       </Modal>
+
+      <PaymentSuccessModal payment={justRecorded} onClose={() => setJustRecorded(null)} />
 
       {/* Record Payment Modal */}
       <Modal

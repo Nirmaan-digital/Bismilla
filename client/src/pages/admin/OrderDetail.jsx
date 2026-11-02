@@ -16,6 +16,7 @@ import {
   FiCreditCard,
 } from 'react-icons/fi';
 import Badge from '../../components/common/Badge';
+import OrderPaymentsCard from '../../components/common/OrderPaymentsCard';
 import api from '../../services/api';
 import BrandLoader from '../../components/brand/BrandLoader';
 
@@ -320,6 +321,8 @@ const OrderDetail = () => {
         </div>
       </div>
 
+      <OrderPaymentsCard payments={order.payments} />
+      
       {/* Online payment transactions */}
       {order.transactions && order.transactions.length > 0 && (
         <div className="bg-white rounded-xl border border-line p-6 mb-6">

@@ -9,6 +9,7 @@ const path = require('path');
 const zlib = require('zlib');
 const ensureIndexes = require('./config/ensureIndexes');
 const { ensureNotificationTables } = require('./services/notificationService');
+const { ensureInvoiceColumns } = require('./services/invoiceService');
 const {
   securityHeaders,
   scrubServerErrors,
@@ -301,6 +302,7 @@ app.use((err, req, res, next) => {
 app.listen(PORT, '0.0.0.0', () => {
   ensureIndexes();
   ensureNotificationTables();
+  ensureInvoiceColumns();
   console.log(`✔ Server running on port ${PORT} (${IS_DEV ? 'development' : 'production'})`);
   console.log(`💳 Payment provider: ${process.env.PAYMENT_PROVIDER || 'stripe'}`);
   console.log(`🌐 Allowed origins: ${allowedOrigins.join(', ')}`);

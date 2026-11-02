@@ -18,6 +18,7 @@ import {
 } from 'react-icons/fi';
 import Button from '../../components/common/Button';
 import Badge from '../../components/common/Badge';
+import InvoiceButton from '../../components/common/InvoiceButton';
 import Modal from '../../components/common/Modal';
 import SearchInput from '../../components/common/SearchInput';
 import EmptyState from '../../components/common/EmptyState';
@@ -349,6 +350,7 @@ const CashVerification = () => {
                     <th className="px-6 py-3 text-left text-xs font-semibold text-muted uppercase tracking-wider">Verified By</th>
                     <th className="px-6 py-3 text-right text-xs font-semibold text-muted uppercase tracking-wider">Amount</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-muted uppercase tracking-wider">Status</th>
+                    <th className="px-6 py-3 text-right text-xs font-semibold text-muted uppercase tracking-wider">Invoice</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-line">
@@ -369,6 +371,15 @@ const CashVerification = () => {
                       </td>
                       <td className="px-6 py-4">
                         <Badge variant="success">Verified</Badge>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        {collection.payment_id ? (
+                          <InvoiceButton
+                            payment={{ id: collection.payment_id, payment_number: collection.trip_number, shop_name: collection.retailer }}
+                          />
+                        ) : (
+                          <span className="text-xs text-muted">—</span>
+                        )}
                       </td>
                     </tr>
                   ))}

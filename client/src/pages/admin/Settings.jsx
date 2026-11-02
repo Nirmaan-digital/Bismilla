@@ -17,7 +17,8 @@ const Settings = () => {
     businessName: '',
     phone: '',
     email: '',
-    address: ''
+    address: '',
+    gstin: ''
   });
 
   const [accountData, setAccountData] = useState({
@@ -55,7 +56,7 @@ const Settings = () => {
       try {
         if (activeTab === 'business') {
           const res = await api.get('/settings/business');
-          if (res.data.success) setBusinessData(res.data.data);
+          if (res.data.success) setBusinessData((prev) => ({ ...prev, ...res.data.data }));
         } else if (activeTab === 'account') {
           const res = await api.get('/settings/account');
           if (res.data.success) setAccountData(res.data.data);
@@ -79,7 +80,7 @@ const Settings = () => {
       const res = await api.put('/settings/business', businessData);
       setSuccess(res.data.message);
     } catch (err) {
-      setError('Failed to save business settings.');
+      setError(err.response?.data?.message || 'Failed to save business settings.');
     } finally { setSaving(false); }
   };
 
@@ -217,6 +218,20 @@ const Settings = () => {
                   onChange={(e) => setBusinessData({ ...businessData, address: e.target.value })}
                   className="w-full px-4 py-2 border border-line rounded-lg focus:ring-2 focus:ring-gold focus:border-transparent"
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-ink mb-2">GSTIN (optional)</label>
+                <input
+                  type="text"
+                  maxLength={15}
+                  placeholder="e.g. 37ABCDE1234F1Z5"
+                  value={businessData.gstin || ''}
+                  onChange={(e) => setBusinessData({ ...businessData, gstin: e.target.value.toUpperCase() })}
+                  className="w-full px-4 py-2 border border-line rounded-lg uppercase tracking-wider focus:ring-2 focus:ring-gold focus:border-transparent"
+                />
+                <p className="mt-1.5 text-xs text-muted">
+                  Name, phone, email, address and GSTIN are printed on every payment invoice. With a GSTIN, invoices are titled "Tax Invoice".
+                </p>
               </div>
               <Button onClick={handleSaveBusiness} disabled={saving}>
                 {saving ? <><FiLoader className="animate-spin mr-2 w-4 h-4" /> Saving...</> : 'Save Changes'}

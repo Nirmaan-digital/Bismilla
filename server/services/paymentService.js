@@ -1,6 +1,7 @@
 const pool = require('../config/db');
 const notifications = require('./notificationService');
 const config = require('../config/payment');
+const invoiceService = require('./invoiceService');
 
 // Anything under ₹1 left on a bill isn't real money owed at this business's
 // whole-rupee pricing. Same threshold used in driverController.js and
@@ -226,6 +227,13 @@ const settleTransaction = async ({
       outstanding,
       retailerId,
     ]);
+
+    await invoiceService.snapshotBalance(connection, {
+      paymentId: paymentResult.insertId,
+      retailerId,
+      amount,
+      allocations,
+    });
 
     // --- 4. Ledger credit ---
     await connection.query(

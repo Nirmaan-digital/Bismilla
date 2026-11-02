@@ -2,6 +2,7 @@ const pool = require('../config/db');
 const config = require('../config/payment');
 const { getGateway } = require('../services/paymentGateway');
 const paymentService = require('../services/paymentService');
+const invoiceService = require('../services/invoiceService');
 
 // Resolve the logged-in user to a retailer row.
 const getRetailerForUser = async (userId) => {
@@ -62,7 +63,7 @@ const getPayments = async (req, res) => {
     let sql = `
       SELECT p.id, p.payment_number, p.retailer_id, p.order_id, p.amount,
              p.method, p.status, p.collected_by, p.collected_by_role,
-             p.date, p.notes, p.created_at,
+             p.date, p.notes, p.created_at, p.balance_before, p.balance_after,
              o.order_number, r.shop_name
         FROM payments p
         LEFT JOIN orders o ON p.order_id = o.id
@@ -260,6 +261,7 @@ const getTransactionStatus = async (req, res) => {
             : txn.allocations
           : [],
         failure_reason: txn.failure_reason,
+        payment_id: txn.payment_id || null,
         created_at: txn.created_at,
       },
     });
@@ -357,7 +359,86 @@ const handleWebhook = async (req, res) => {
   res.json({ received: true });
 };
 
+// ============================================
+// PAYMENT INVOICES (PDF)
+// GET  /api/payments/:id/invoice           — download (logged in)
+// POST /api/payments/:id/invoice-link      — 10-minute link for the Android
+//                                            app to open in the phone browser
+// GET  /api/payments/:id/invoice.pdf?token — opened from that link
+// ============================================
+const sendInvoice = async (res, paymentId, user) => {
+  const data = await invoiceService.getInvoiceData(paymentId);
+  if (!data) {
+    return res.status(404).json({ success: false, message: 'Payment not found' });
+  }
+  if (user && !(await invoiceService.canAccess(user, data.payment))) {
+    return res.status(403).json({ success: false, message: 'Access denied' });
+  }
+  const pdf = await invoiceService.renderInvoicePdf(data);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${invoiceService.invoiceFileName(data.payment)}"`);
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.setHeader('Content-Length', pdf.length);
+  return res.end(pdf);
+};
+
+const parsePaymentId = (req) => {
+  const id = parseInt(req.params.id, 10);
+  return Number.isInteger(id) && id > 0 ? id : null;
+};
+
+const getInvoice = async (req, res) => {
+  try {
+    const id = parsePaymentId(req);
+    if (!id) return res.status(400).json({ success: false, message: 'Invalid payment' });
+    await sendInvoice(res, id, req.user);
+  } catch (error) {
+    console.error('❌ getInvoice:', error);
+    res.status(500).json({ success: false, message: 'Could not create the invoice' });
+  }
+};
+
+const getInvoiceLink = async (req, res) => {
+  try {
+    const id = parsePaymentId(req);
+    if (!id) return res.status(400).json({ success: false, message: 'Invalid payment' });
+    const data = await invoiceService.getInvoiceData(id);
+    if (!data) return res.status(404).json({ success: false, message: 'Payment not found' });
+    if (!(await invoiceService.canAccess(req.user, data.payment))) {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+    const host = req.get('host');
+    const base =
+      process.env.API_PUBLIC_URL ||
+      `${/^(localhost|127\.0\.0\.1)(:|$)/.test(host) ? 'http' : 'https'}://${host}`;
+    const token = invoiceService.createDownloadToken(id);
+    res.json({
+      success: true,
+      data: { url: `${base.replace(/\/$/, '')}/api/payments/${id}/invoice.pdf?token=${encodeURIComponent(token)}` },
+    });
+  } catch (error) {
+    console.error('❌ getInvoiceLink:', error);
+    res.status(500).json({ success: false, message: 'Could not create the invoice link' });
+  }
+};
+
+const getInvoiceByToken = async (req, res) => {
+  try {
+    const id = parsePaymentId(req);
+    if (!id || !invoiceService.verifyDownloadToken(String(req.query.token || ''), id)) {
+      return res.status(401).send('This invoice link has expired. Please download it again from the app.');
+    }
+    await sendInvoice(res, id, null);
+  } catch (error) {
+    console.error('❌ getInvoiceByToken:', error);
+    res.status(500).send('Could not create the invoice');
+  }
+};
+
 module.exports = {
+  getInvoice,
+  getInvoiceLink,
+  getInvoiceByToken,
   getPaymentSummary,
   getPayments,
   createCheckout,

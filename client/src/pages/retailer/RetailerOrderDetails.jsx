@@ -13,6 +13,7 @@ import {
   FiAlertCircle
 } from 'react-icons/fi';
 import Badge from '../../components/common/Badge';
+import OrderPaymentsCard from '../../components/common/OrderPaymentsCard';
 import Button from '../../components/common/Button';
 import api from '../../services/api';
 import { startCheckout, redirectToGateway } from '../../services/paymentService';
@@ -327,6 +328,8 @@ const RetailerOrderDetails = () => {
             </div>
           </div>
 
+          <OrderPaymentsCard payments={order.payments} className="mb-0!" />
+          
           {/* Delivery Details */}
           <div className="bg-white rounded-xl border border-line p-6">
             <h3 className="font-semibold text-ink mb-4">Delivery Details</h3>

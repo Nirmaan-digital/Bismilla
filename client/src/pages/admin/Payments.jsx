@@ -22,6 +22,8 @@ import Badge from '../../components/common/Badge';
 import Modal from '../../components/common/Modal';
 import SearchInput from '../../components/common/SearchInput';
 import EmptyState from '../../components/common/EmptyState';
+import InvoiceButton from '../../components/common/InvoiceButton';
+import PaymentSuccessModal from '../../components/common/PaymentSuccessModal';
 import api from '../../services/api';
 
 import BrandLoader from '../../components/brand/BrandLoader';
@@ -77,6 +79,7 @@ const Payments = () => {
 
   // Real Live Data States
   const [payments, setPayments] = useState([]); // Real rows from the `payments` table
+  const [justRecorded, setJustRecorded] = useState(null); // payment shown in the success window
   const [retailers, setRetailers] = useState([]);
   const [totalOrdersAmount, setTotalOrdersAmount] = useState(0);
   
@@ -212,7 +215,15 @@ const Payments = () => {
           date: new Date().toISOString().split('T')[0],
           notes: '',
         });
-        alert('Payment recorded successfully!');
+        const saved = response.data.data || {};
+        setJustRecorded({
+          id: saved.payment_id,
+          payment_number: saved.payment_number,
+          shop_name: selectedRetailer.shop_name,
+          amount: saved.processedAmount,
+          balance_before: (parseFloat(saved.newOutstanding) || 0) + (parseFloat(saved.processedAmount) || 0),
+          balance_after: saved.newOutstanding,
+        });
         fetchPaymentData(); // Refresh data
       } else {
         throw new Error(response.data.message || 'Failed to record payment');
@@ -344,7 +355,9 @@ const Payments = () => {
       'Payment Number',
       'Retailer',
       'Order Number',
-      'Amount',
+      'Balance Before',
+      'Amount Paid',
+      'Balance Due',
       'Method',
       'Collected By',
       'Role',
@@ -356,7 +369,9 @@ const Payments = () => {
       p.payment_number,
       p.shop_name || 'N/A',
       p.order_number || '-',
+      p.balance_before ?? '',
       p.amount,
+      p.balance_after ?? '',
       getMethodLabel(p.method),
       p.collected_by || 'N/A',
       p.collected_by_role === 'admin' ? 'Office' : 'Driver',
@@ -675,10 +690,13 @@ const Payments = () => {
                   <th className="px-6 py-3 text-left text-xs font-semibold text-muted uppercase tracking-wider">Payment</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-muted uppercase tracking-wider">Retailer</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-muted uppercase tracking-wider">Order</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-muted uppercase tracking-wider">Amount</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-muted uppercase tracking-wider">Balance Before</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-muted uppercase tracking-wider">Amount Paid</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-muted uppercase tracking-wider">Balance Due</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-muted uppercase tracking-wider">Method</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-muted uppercase tracking-wider">Collected By</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-muted uppercase tracking-wider">Date</th>
+                  <th className="px-6 py-3 text-right text-xs font-semibold text-muted uppercase tracking-wider">Invoice</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
@@ -693,8 +711,14 @@ const Payments = () => {
                     <td className="px-6 py-4 text-sm text-muted">
                       {payment.order_number || '-'}
                     </td>
-                    <td className="px-6 py-4 text-sm font-semibold text-success">
+                    <td className="px-6 py-4 text-sm text-ink whitespace-nowrap">
+                      {payment.balance_before != null ? formatCurrency(payment.balance_before) : '—'}
+                    </td>
+                    <td className="px-6 py-4 text-sm font-semibold text-success whitespace-nowrap">
                       {formatCurrency(payment.amount)}
+                    </td>
+                    <td className={`px-6 py-4 text-sm font-semibold whitespace-nowrap ${parseFloat(payment.balance_after) >= 1 ? 'text-brand' : 'text-success'}`}>
+                      {payment.balance_after != null ? formatCurrency(payment.balance_after) : '—'}
                     </td>
                     <td className="px-6 py-4">
                       <Badge variant={getMethodColor(payment.method)}>
@@ -707,8 +731,11 @@ const Payments = () => {
                         ({payment.collected_by_role === 'admin' ? 'Office' : 'Driver'})
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-sm text-muted">
+                    <td className="px-6 py-4 text-sm text-muted whitespace-nowrap">
                       {formatDate(payment.date || payment.created_at)}
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <InvoiceButton payment={payment} />
                     </td>
                   </tr>
                 ))}
@@ -723,6 +750,8 @@ const Payments = () => {
           />
         )}
       </div>
+
+      <PaymentSuccessModal payment={justRecorded} onClose={() => setJustRecorded(null)} />
 
       {/* Record Payment Modal */}
       <Modal

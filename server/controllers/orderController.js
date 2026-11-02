@@ -11,6 +11,7 @@ const ORDER_STATUS_TEXT = {
 };
 
 const paymentService = require('../services/paymentService');
+const invoiceService = require('../services/invoiceService');
 
 // createTables.js creates `ledger`; the old recordPayment inserted into
 // `ledgers`, which does not exist — every admin payment threw and rolled back.
@@ -612,6 +613,21 @@ const getOrderById = async (req, res) => {
         `, [id]);
         order.transactions = transactions;
 
+        // Payments that went (fully or partly) towards this bill, each with
+        // its own invoice.
+        const [payments] = await pool.query(`
+            SELECT p.id, p.payment_number, p.amount, p.method, p.date,
+                   p.collected_by, p.collected_by_role
+            FROM payments p
+            WHERE p.retailer_id = ?
+              AND (p.order_id = ?
+                   OR p.allocations LIKE ?
+                   OR p.id IN (SELECT payment_id FROM \`${LEDGER_TABLE}\`
+                                WHERE order_id = ? AND payment_id IS NOT NULL))
+            ORDER BY p.date DESC, p.id DESC
+        `, [order.retailer_id, id, `%"order_number":"${order.order_number}"%`, id]);
+        order.payments = payments;
+
         res.status(200).json({
             success: true,
             data: order
@@ -936,7 +952,8 @@ const recordPayment = async (req, res) => {
             `INSERT INTO payments (
                payment_number, retailer_id, order_id, amount, method, status,
                collected_by, collected_by_role, verified_by, verified_at, date, notes
-             ) VALUES (?, ?, ?, ?, ?, 'verified', ?, 'admin', ?, NOW(), COALESCE(?, NOW()), ?)`,
+             ) VALUES (?, ?, ?, ?, ?, 'verified', ?, 'admin', ?, NOW(),
+                       IF(? IS NULL OR DATE(?) = CURDATE(), NOW(), ?), ?)`,
             [
                 paymentNumber,
                 retailer_id,
@@ -945,6 +962,8 @@ const recordPayment = async (req, res) => {
                 method,
                 req.user.name || 'Admin',
                 req.user.name || 'Admin',
+                paymentDate,
+                paymentDate,
                 paymentDate,
                 typeof notes === 'string' && notes.trim() ? notes.trim().slice(0, 1000) : null
             ]
@@ -963,6 +982,13 @@ const recordPayment = async (req, res) => {
             'UPDATE retailers SET outstanding = ? WHERE id = ?',
             [outstanding, retailer_id]
         );
+
+        await invoiceService.snapshotBalance(connection, {
+            paymentId: paymentResult.insertId,
+            retailerId: retailer_id,
+            amount: processedAmount,
+            allocations: applied,
+        });
 
         // ---- Ledger credit ----
         await connection.query(
@@ -991,6 +1017,7 @@ const recordPayment = async (req, res) => {
             success: true,
             message: 'Payment recorded successfully',
             data: {
+                payment_id: paymentResult.insertId,
                 payment_number: paymentNumber,
                 newOutstanding: parseFloat(outstanding),
                 processedAmount,

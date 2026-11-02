@@ -1,22 +1,15 @@
 const pool = require('../config/db');
 const bcrypt = require('bcryptjs');
+const invoiceService = require('../services/invoiceService');
 
 // ============================================
 // 1. GET BUSINESS SETTINGS
+// Shown on every payment invoice (name, address, phone, email, GSTIN).
 // ============================================
 exports.getBusinessSettings = async (req, res) => {
     try {
-        // For now, we return a static object since we didn't create a business table.
-        return res.json({
-            success: true,
-            data: {
-                businessName: 'Bismillah Chicken Center',
-                phone: '+91 9876543210',
-                email: 'info@bismillahchicken.com',
-                address: '12 Market Road, Hyderabad'
-            }
-        });
-        
+        const data = await invoiceService.getBusiness();
+        return res.json({ success: true, data });
     } catch (error) {
         console.error('Error fetching business settings:', error);
         res.status(500).json({ success: false, message: 'Failed to load business settings' });
@@ -28,10 +21,14 @@ exports.getBusinessSettings = async (req, res) => {
 // ============================================
 exports.updateBusinessSettings = async (req, res) => {
     try {
-        const { businessName, phone, email, address } = req.body;
-        // Save to DB here in the future. For now, just return success.
-        
-        res.json({ success: true, message: 'Business settings updated successfully!' });
+        const { gstin } = req.body;
+        const cleanGstin = typeof gstin === 'string' ? gstin.toUpperCase().replace(/\s+/g, '') : '';
+        // GSTIN format: 2-digit state code, PAN, entity number, Z, checksum.
+        if (cleanGstin && !/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(cleanGstin)) {
+            return res.status(400).json({ success: false, message: 'Please enter a valid 15-character GSTIN.' });
+        }
+        const data = await invoiceService.saveBusiness(req.body || {});
+        res.json({ success: true, message: 'Business settings updated successfully!', data });
     } catch (error) {
         console.error('Error updating business settings:', error);
         res.status(500).json({ success: false, message: 'Failed to update business settings' });

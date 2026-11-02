@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const config = require('../config/payment');
+const invoiceService = require('../services/invoiceService');
 
 const dateStamp = () => new Date().toISOString().slice(0, 10).replace(/-/g, '');
 
@@ -70,7 +71,8 @@ exports.getVerifiedHistory = async (req, res) => {
                 r.shop_name as retailer,
                 r.phone as retailer_phone,
                 MIN(o.order_number) as order_number,
-                MIN(o.id) as order_id
+                MIN(o.id) as order_id,
+                MAX(pv.id) as payment_id
             FROM cash_verifications cv
             JOIN trips t ON cv.trip_number = t.trip_number
             JOIN drivers d ON t.driver_id = d.id
@@ -78,6 +80,8 @@ exports.getVerifiedHistory = async (req, res) => {
             JOIN trip_orders tos ON t.id = tos.trip_id
             JOIN orders o ON tos.order_id = o.id
             JOIN retailers r ON o.retailer_id = r.id
+            LEFT JOIN payments pv ON pv.order_id = o.id AND pv.collected_by_role = 'driver'
+                 AND pv.notes LIKE CONCAT('%', cv.trip_number, '%')
             WHERE cv.status = 'verified'
             GROUP BY cv.id
             ORDER BY cv.verified_at DESC
@@ -156,7 +160,7 @@ exports.verifyPayment = async (req, res) => {
         //    payments/ledger rows below are attributed correctly. Order
         //    and retailer balances themselves are NOT modified here.
         const [orderRows] = await connection.query(
-            `SELECT id, retailer_id FROM orders WHERE id = ?`,
+            `SELECT id, retailer_id, order_number FROM orders WHERE id = ?`,
             [orderId]
         );
         if (orderRows.length === 0) {
@@ -190,6 +194,13 @@ exports.verifyPayment = async (req, res) => {
             ]
         );
 
+        await invoiceService.snapshotBalance(connection, {
+            paymentId: paymentResult.insertId,
+            retailerId: order.retailer_id,
+            amount: payAmount,
+            allocations: [{ order_id: orderId, order_number: order.order_number, amount: payAmount }],
+        });
+
         // 4. Ledger credit -- same as every other payment path, purely a
         //    record of the transaction for the ledger view.
         await connection.query(
@@ -210,7 +221,7 @@ exports.verifyPayment = async (req, res) => {
         res.json({
             success: true,
             message: 'Cash collection verified.',
-            data: { paymentNumber },
+            data: { paymentNumber, paymentId: paymentResult.insertId },
         });
 
     } catch (error) {

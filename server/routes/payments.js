@@ -12,6 +12,10 @@ const authMiddleware = require('../middleware/auth');
 // ============================================
 router.post('/webhook', paymentController.handleWebhook);
 
+// Invoice download links carry their own short-lived signed token (used by
+// the Android app, which hands the file to the phone's browser).
+router.get('/:id/invoice.pdf', paymentController.getInvoiceByToken);
+
 // ============================================
 // Everything below needs a logged-in user
 // ============================================
@@ -22,5 +26,7 @@ router.get('/summary', paymentController.getPaymentSummary);
 router.post('/checkout', paymentController.createCheckout);
 router.get('/status/:reference', paymentController.getTransactionStatus);
 router.post('/cancel/:reference', paymentController.cancelTransaction);
+router.get('/:id/invoice', paymentController.getInvoice);
+router.post('/:id/invoice-link', paymentController.getInvoiceLink);
 
 module.exports = router;
