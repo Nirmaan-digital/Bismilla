@@ -22,7 +22,8 @@ import Badge from '../../components/common/Badge';
 import Modal from '../../components/common/Modal';
 import SearchInput from '../../components/common/SearchInput';
 import EmptyState from '../../components/common/EmptyState';
-import api from '../../services/api';
+import api from '../../services/api';
+
 import BrandLoader from '../../components/brand/BrandLoader';
 
 // YYYY-MM-DD in the browser's local timezone, matching what <input type=date>
@@ -192,8 +193,10 @@ const Payments = () => {
         // Converted to the lowercase value the payments table's method
         // ENUM actually accepts -- see METHOD_TO_DB_VALUE above.
         payment_method: METHOD_TO_DB_VALUE[paymentForm.method] || 'cash',
-        // We pass an empty bill_allocations array because this is just a manual cash entry
-        bill_allocations: []
+        // No bills named: the server applies it to the oldest unpaid bills.
+        bill_allocations: [],
+        date: paymentForm.date,
+        notes: paymentForm.notes,
       };
 
       // Send to the exact same endpoint used by the Ledger page
@@ -217,7 +220,7 @@ const Payments = () => {
 
     } catch (error) {
       console.error('Error recording payment:', error);
-      alert(error.message || 'Failed to record payment. Please try again.');
+      alert(error.response?.data?.message || error.message || 'Failed to record payment. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -882,4 +885,4 @@ const Payments = () => {
   );
 };
 
-export default Payments;
+export default Payments;

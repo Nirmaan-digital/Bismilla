@@ -786,18 +786,24 @@ const recordPayment = async (req, res) => {
             retailer_id,
             amount,
             payment_method,
-            bill_allocations
+            notes,
+            date
         } = req.body;
+        let { bill_allocations } = req.body;
 
         const paymentAmount = parseFloat(amount);
 
-        if (!retailer_id || !paymentAmount || paymentAmount <= 0 ||
-            !Array.isArray(bill_allocations) || bill_allocations.length === 0) {
+        if (!retailer_id || !paymentAmount || paymentAmount <= 0) {
             return res.status(400).json({
                 success: false,
-                message: 'Invalid payment data.'
+                message: 'Please select a customer and enter an amount above zero.'
             });
         }
+        // No bills named (the Payments page's "Record Payment" form): the
+        // payment is applied oldest-first, built below once rows are locked.
+        const autoAllocate = !Array.isArray(bill_allocations) || bill_allocations.length === 0;
+        // Optional payment date from the form (YYYY-MM-DD); defaults to now.
+        const paymentDate = /^\d{4}-\d{2}-\d{2}$/.test(date || '') ? `${date} 12:00:00` : null;
 
         const allowedMethods = ['cash', 'upi', 'bank_transfer', 'cheque'];
         const method = allowedMethods.includes(payment_method) ? payment_method : 'cash';
@@ -813,6 +819,42 @@ const recordPayment = async (req, res) => {
             const err = new Error('Retailer not found');
             err.status = 404;
             throw err;
+        }
+
+        if (autoAllocate) {
+            // Opening balance first, then unpaid bills from oldest to newest.
+            bill_allocations = [];
+            let left = paymentAmount;
+            const [openingRows] = await connection.query(
+                'SELECT remaining_amount FROM retailer_opening_balances WHERE retailer_id = ?',
+                [retailer_id]
+            );
+            const opening = openingRows.length ? parseFloat(openingRows[0].remaining_amount) || 0 : 0;
+            if (opening > 0) {
+                const take = Math.min(left, opening);
+                bill_allocations.push({ bill_id: 'OPENING', amount_paid: take });
+                left -= take;
+            }
+            const [dueRows] = await connection.query(
+                `SELECT order_number, balance FROM orders
+                  WHERE retailer_id = ? AND order_status != 'cancelled' AND balance >= ?
+                  ORDER BY created_at ASC, id ASC`,
+                [retailer_id, PAID_THRESHOLD]
+            );
+            for (const row of dueRows) {
+                if (left < 0.01) break;
+                const take = Math.min(left, parseFloat(row.balance) || 0);
+                bill_allocations.push({ bill_id: row.order_number, amount_paid: take });
+                left -= take;
+            }
+            if (left >= PAID_THRESHOLD) {
+                const due = parseFloat((paymentAmount - left).toFixed(2));
+                const err = new Error(due > 0
+                    ? `This customer only owes ₹${due.toLocaleString('en-IN')}. Please enter that amount or less.`
+                    : 'This customer has no outstanding balance to pay.');
+                err.status = 400;
+                throw err;
+            }
         }
 
         // ---- Apply against the named bills, oldest first ----
@@ -893,8 +935,8 @@ const recordPayment = async (req, res) => {
         const [paymentResult] = await connection.query(
             `INSERT INTO payments (
                payment_number, retailer_id, order_id, amount, method, status,
-               collected_by, collected_by_role, verified_by, verified_at
-             ) VALUES (?, ?, ?, ?, ?, 'verified', ?, 'admin', ?, NOW())`,
+               collected_by, collected_by_role, verified_by, verified_at, date, notes
+             ) VALUES (?, ?, ?, ?, ?, 'verified', ?, 'admin', ?, NOW(), COALESCE(?, NOW()), ?)`,
             [
                 paymentNumber,
                 retailer_id,
@@ -902,7 +944,9 @@ const recordPayment = async (req, res) => {
                 processedAmount,
                 method,
                 req.user.name || 'Admin',
-                req.user.name || 'Admin'
+                req.user.name || 'Admin',
+                paymentDate,
+                typeof notes === 'string' && notes.trim() ? notes.trim().slice(0, 1000) : null
             ]
         );
 
@@ -981,4 +1025,4 @@ module.exports = {
     updateOrderStatus,
     getOrderStats,
     recordPayment
-};
+};
