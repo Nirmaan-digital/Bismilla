@@ -18,6 +18,7 @@ import {
 import Button from '../../components/common/Button';
 import Badge from '../../components/common/Badge';
 import api from '../../services/api';
+import { compressImage } from '../../utils/compressImage';
 import BrandLoader from '../../components/brand/BrandLoader';
 
 const DriverDashboard = () => {
@@ -218,11 +219,10 @@ const DriverDashboard = () => {
     setUploadError(null);
     setTripData({ ...tripData, dieselPhoto: file, dieselPhotoPreview: URL.createObjectURL(file) });
 
-    const formData = new FormData();
-    formData.append('photo', file);
-
     setIsUploadingPhoto(true);
     try {
+      const formData = new FormData();
+      formData.append('photo', await compressImage(file));
       const response = await api.post('/driver/upload-photo', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
@@ -231,7 +231,7 @@ const DriverDashboard = () => {
       }
     } catch (err) {
       console.error('Photo upload failed:', err);
-      setUploadError('Failed to upload photo. Please try again.');
+      setUploadError(err.response?.data?.message || 'Failed to upload photo. Please try again.');
     } finally {
       setIsUploadingPhoto(false);
     }
@@ -535,8 +535,8 @@ const DriverDashboard = () => {
               <div className="text-center"><p className="text-xs text-muted">Cash Collected</p><p className="text-lg font-semibold text-success">{formatCurrency(getTotalCashCollected())}</p></div>
               <div className="text-center"><p className="text-xs text-muted">Total Hens</p><p className="text-lg font-semibold">{tripData.totalHens || 0}</p></div>
             </div>
-            <Button className="w-full py-3 text-base" onClick={handleCompleteTrip} disabled={!allDelivered}>
-              {allDelivered ? <><FiCheckCircle className="w-5 h-5 mr-2" />Complete Trip</> : <><FiAlertCircle className="w-5 h-5 mr-2" />Deliver all orders to complete</>}
+            <Button className="w-full py-3 text-base" onClick={handleCompleteTrip} disabled={!allDelivered || isUploadingPhoto}>
+              {isUploadingPhoto ? 'Uploading bill photo…' : allDelivered ? <><FiCheckCircle className="w-5 h-5 mr-2" />Complete Trip</> : <><FiAlertCircle className="w-5 h-5 mr-2" />Deliver all orders to complete</>}
             </Button>
           </div>
         )}

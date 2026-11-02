@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const { syncDriverSalary } = require('./salaryController');
 
 // Get all staff
 const getAllStaff = async (req, res) => {
@@ -64,6 +65,7 @@ const addStaff = async (req, res) => {
       INSERT INTO staff (name, phone, role, daily_salary, status, join_date)
       VALUES (?, ?, ?, ?, ?, CURDATE())
     `, [name, phone, role, dailySalary, status || 'active']);
+    if (role === 'driver') await syncDriverSalary('staff', result.insertId, parseFloat(dailySalary) || 0);
     
     // Get the newly created staff
     const [newStaff] = await pool.query(
@@ -136,6 +138,7 @@ const updateStaff = async (req, res) => {
       SET name = ?, phone = ?, role = ?, daily_salary = ?, status = ?
       WHERE id = ?
     `, [name, phone, role, dailySalary, status, id]);
+    if (role === 'driver') await syncDriverSalary('staff', id, parseFloat(dailySalary) || 0);
     
     // Get updated staff
     const [updated] = await pool.query(

@@ -17,6 +17,7 @@ import {
   FiLayers,
 } from 'react-icons/fi';
 import Badge from '../../components/common/Badge';
+import { createPortal } from 'react-dom';
 import Modal from '../../components/common/Modal';
 import EmptyState from '../../components/common/EmptyState';
 import api from '../../services/api';
@@ -97,6 +98,7 @@ const Expenses = () => {
 
   // Fullscreen bill photo viewer, opened from inside the trip detail modal.
   const [zoomedPhoto, setZoomedPhoto] = useState(null);
+  const [brokenPhotos, setBrokenPhotos] = useState({}); // photos whose file no longer exists
 
   const isCurrentMonth = year === now.getFullYear() && month === now.getMonth() + 1;
 
@@ -477,7 +479,15 @@ const Expenses = () => {
                       </div>
 
                       <div className="flex items-center gap-3 shrink-0">
-                        {exp.photoUrl && (
+                        {exp.photoUrl && brokenPhotos[exp.photoUrl] && (
+                          <span
+                            className="w-24 text-[10px] leading-tight text-muted text-center border border-dashed border-line rounded-lg px-1.5 py-2"
+                            title="This photo was uploaded before bill photos were saved permanently and is no longer available."
+                          >
+                            Photo not available
+                          </span>
+                        )}
+                        {exp.photoUrl && !brokenPhotos[exp.photoUrl] && (
                           <button
                             onClick={() => setZoomedPhoto(photoSrc(exp.photoUrl))}
                             className="relative group"
@@ -486,6 +496,8 @@ const Expenses = () => {
                             <img
                               src={photoSrc(exp.photoUrl)}
                               alt="Bill"
+                              loading="lazy"
+                              onError={() => setBrokenPhotos((prev) => ({ ...prev, [exp.photoUrl]: true }))}
                               className="w-14 h-14 object-cover rounded-lg border border-line"
                             />
                             <span className="absolute inset-0 bg-black/0 group-hover:bg-black/20 rounded-lg transition flex items-center justify-center">
@@ -506,8 +518,8 @@ const Expenses = () => {
         )}
       </Modal>
 
-      {/* Fullscreen photo viewer */}
-      {zoomedPhoto && (
+      {/* Fullscreen photo viewer (portalled so it always sits above the modal) */}
+      {zoomedPhoto && createPortal(
         <div
           className="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-6"
           onClick={() => setZoomedPhoto(null)}
@@ -524,7 +536,8 @@ const Expenses = () => {
             className="max-w-full max-h-full rounded-lg"
             onClick={(e) => e.stopPropagation()}
           />
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

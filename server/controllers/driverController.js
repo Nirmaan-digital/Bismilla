@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const notifications = require('../services/notificationService');
+const fileStore = require('../services/fileStore');
 
 // Anything under ₹1 left on a bill isn't real money owed at this business's
 // whole-rupee pricing — it's rounding dust from kg × rate math (e.g. a
@@ -19,11 +20,14 @@ exports.uploadTripPhoto = async (req, res) => {
         if (!req.file) {
             return res.status(400).json({ success: false, message: 'No image file received' });
         }
-        const url = `/uploads/trip-bills/${req.file.filename}`;
+        const url = await fileStore.saveImage(req.file.buffer, req.user.id);
         res.json({ success: true, url });
     } catch (error) {
         console.error('❌ Error uploading trip photo:', error.message);
-        res.status(500).json({ success: false, message: 'Upload failed' });
+        res.status(error.status || 500).json({
+            success: false,
+            message: error.status ? error.message : 'Upload failed',
+        });
     }
 };
 
@@ -116,9 +120,11 @@ exports.updateTripStatus = async (req, res) => {
         await connection.beginTransaction();
         const driverUserId = req.user.id;
         const {
-            tripNumber, status, totalHens, dieselAmount, orders, dieselPhotoUrl,
+            tripNumber, status, totalHens, dieselAmount, orders,
             companyId, totalLoadedKg,
         } = req.body;
+        // Only links made by the upload endpoint are stored.
+        const dieselPhotoUrl = fileStore.isAllowedPhotoUrl(req.body.dieselPhotoUrl) ? req.body.dieselPhotoUrl : null;
 
         console.log(`🛠️ Processing trip update: ${tripNumber} -> ${status}`);
         console.log(`📦 Received ${orders.length} orders from frontend.`);

@@ -25,6 +25,7 @@ import Modal from '../../components/common/Modal';
 import SearchInput from '../../components/common/SearchInput';
 import EmptyState from '../../components/common/EmptyState';
 import { staffService } from '../../services/staffService';
+import api from '../../services/api';
 import BrandLoader from '../../components/brand/BrandLoader';
 
 const Staff = () => {
@@ -57,7 +58,19 @@ const Staff = () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await staffService.getAllStaff();
+      const [response, salaryRes] = await Promise.all([
+        staffService.getAllStaff(),
+        // This month's days, trips and earnings (same figures as the Salaries page).
+        api.get('/salaries/summary').catch(() => null),
+      ]);
+      const digits = (p) => String(p || '').replace(/\D/g, '').slice(-10);
+      const salaryRows = salaryRes?.data?.data || [];
+      const findSalary = (s) =>
+        salaryRows.find((e) =>
+          s.role === 'driver'
+            ? e.refType === 'driver' && digits(e.phone) === digits(s.phone)
+            : e.refType === 'staff' && e.refId === s.id
+        );
       if (response.success) {
         // Format staff data to match frontend structure
         const formattedStaff = response.data.map(staff => ({
@@ -73,9 +86,9 @@ const Staff = () => {
             month: 'short',
             year: 'numeric'
           }) : 'N/A',
-          totalTrips: 0,
-          tripsThisMonth: 0,
-          salaryThisMonth: 0,
+          totalTrips: findSalary(staff)?.tripsCount || 0,
+          tripsThisMonth: findSalary(staff)?.tripsCount || 0,
+          salaryThisMonth: findSalary(staff)?.baseEarned || 0,
           trips: []
         }));
         setStaff(formattedStaff);

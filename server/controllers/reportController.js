@@ -1,5 +1,5 @@
 const pool = require('../config/db');
-const ExcelJS = require('exceljs');
+const { createXlsx } = require('../services/xlsxWriter');
 
 // ============================================
 // 1. GET JSON DATA FOR FRONTEND DISPLAY
@@ -104,49 +104,45 @@ exports.exportReport = async (req, res) => {
             ORDER BY o.created_at DESC
         `);
 
+        const label = ['today', 'yesterday', 'week', 'month'].includes(range) ? range : 'all';
+        const fmtDate = (d) =>
+            d ? new Date(d).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' }) : '';
+        const headers = ['Order Number', 'Retailer', 'Kg Ordered', 'Total Amount', 'Balance', 'Status', 'Date'];
+        const rows = orders.map((o) => [
+            o.order_number,
+            o.retailer,
+            parseFloat(o.kg_ordered) || 0,
+            parseFloat(o.total_amount) || 0,
+            parseFloat(o.balance) || 0,
+            o.payment_status,
+            fmtDate(o.date),
+        ]);
+
         // Generate Excel File
         if (type === 'excel') {
-            const workbook = new ExcelJS.Workbook();
-            const worksheet = workbook.addWorksheet('Sales Report');
-
-            // Add Headers
-            worksheet.columns = [
-                { header: 'Order Number', key: 'order_number', width: 20 },
-                { header: 'Retailer', key: 'retailer', width: 25 },
-                { header: 'Kg Ordered', key: 'kg_ordered', width: 15 },
-                { header: 'Total Amount', key: 'total_amount', width: 15 },
-                { header: 'Balance', key: 'balance', width: 15 },
-                { header: 'Status', key: 'payment_status', width: 15 },
-                { header: 'Date', key: 'date', width: 20 },
-            ];
-
-            // Add Rows
-            orders.forEach(order => {
-                worksheet.addRow({
-                    ...order,
-                    total_amount: parseFloat(order.total_amount),
-                    balance: parseFloat(order.balance)
-                });
-            });
-
-            // Set response headers
+            const file = createXlsx(
+                'Sales Report',
+                [20, 25, 12, 15, 15, 12, 22].map((width, i) => ({ header: headers[i], width })),
+                rows
+            );
             res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-            res.setHeader('Content-Disposition', `attachment; filename=Sales_Report_${range}.xlsx`);
+            res.setHeader('Content-Disposition', `attachment; filename=Sales_Report_${label}.xlsx`);
+            res.send(file);
+        }
 
-            await workbook.xlsx.write(res);
-            res.end();
-        } 
-        
         // Generate CSV File
         else if (type === 'csv') {
-            let csv = 'Order Number,Retailer,Kg Ordered,Total Amount,Balance,Status,Date\n';
-            orders.forEach(order => {
-                csv += `${order.order_number},${order.retailer},${order.kg_ordered},${order.total_amount},${order.balance},${order.payment_status},${order.date}\n`;
-            });
-
-            res.setHeader('Content-Type', 'text/csv');
-            res.setHeader('Content-Disposition', `attachment; filename=Sales_Report_${range}.csv`);
-            res.send(csv);
+            // Quoted so commas in shop names don't shift columns; text that
+            // starts like a formula is prefixed so Excel shows it as text.
+            const field = (v) => {
+                let t = String(v ?? '');
+                if (typeof v === 'string' && /^[=+\-@\t\r]/.test(t)) t = `'${t}`;
+                return `"${t.replace(/"/g, '""')}"`;
+            };
+            const csv = [headers, ...rows].map((r) => r.map(field).join(',')).join('\r\n');
+            res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+            res.setHeader('Content-Disposition', `attachment; filename=Sales_Report_${label}.csv`);
+            res.send('\uFEFF' + csv);
         } else {
             res.status(400).json({ success: false, message: 'Invalid export type' });
         }

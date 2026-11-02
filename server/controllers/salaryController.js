@@ -18,7 +18,17 @@ exports.getSalarySummary = async (req, res) => {
         const month = /^\d{4}-\d{2}$/.test(req.query.month || '') ? req.query.month : currentMonth();
 
         const [drivers] = await pool.query(
-            `SELECT id, name, phone, daily_salary, status FROM drivers ORDER BY name`
+            // A driver's daily wage is usually entered on the Staff page (staff
+            // row with role 'driver', same phone); use it when the drivers row
+            // has none, so it never has to be entered twice.
+            `SELECT d.id, d.name, d.phone, d.status,
+                    COALESCE(NULLIF(d.daily_salary, 0), MAX(s.daily_salary), 0) AS daily_salary
+               FROM drivers d
+               LEFT JOIN staff s ON s.role = 'driver'
+                    AND (RIGHT(REPLACE(REPLACE(REPLACE(s.phone, ' ', ''), '-', ''), '+', ''), 10) = RIGHT(REPLACE(REPLACE(REPLACE(d.phone, ' ', ''), '-', ''), '+', ''), 10)
+                         OR LOWER(TRIM(s.name)) = LOWER(TRIM(d.name)))
+              GROUP BY d.id, d.name, d.phone, d.status, d.daily_salary
+              ORDER BY d.name`
         );
 
         // Staff table's role enum includes 'driver', but real trip drivers
@@ -116,7 +126,14 @@ exports.getSalaryDetail = async (req, res) => {
 
         if (refType === 'driver') {
             const [rows] = await pool.query(
-                `SELECT id, name, phone, daily_salary, status FROM drivers WHERE id = ?`,
+                `SELECT d.id, d.name, d.phone, d.status,
+                        COALESCE(NULLIF(d.daily_salary, 0), MAX(s.daily_salary), 0) AS daily_salary
+                   FROM drivers d
+                   LEFT JOIN staff s ON s.role = 'driver'
+                    AND (RIGHT(REPLACE(REPLACE(REPLACE(s.phone, ' ', ''), '-', ''), '+', ''), 10) = RIGHT(REPLACE(REPLACE(REPLACE(d.phone, ' ', ''), '-', ''), '+', ''), 10)
+                         OR LOWER(TRIM(s.name)) = LOWER(TRIM(d.name)))
+                  WHERE d.id = ?
+                  GROUP BY d.id, d.name, d.phone, d.status, d.daily_salary`,
                 [refId]
             );
             if (rows.length === 0) {
@@ -253,6 +270,34 @@ exports.addAdvance = async (req, res) => {
 // had none anywhere in the app, so this is the only place a driver's daily
 // salary can be set.
 // ============================================
+// A driver can exist twice: in drivers (login + trips) and on the Staff page
+// (staff row, role 'driver'). Matched by phone, their daily wage is kept the
+// same in both.
+const syncDriverSalary = async (refType, refId, dailySalary) => {
+    try {
+        if (refType === 'driver') {
+            await pool.query(
+                `UPDATE staff s JOIN drivers d
+                     ON (RIGHT(REPLACE(REPLACE(REPLACE(s.phone, ' ', ''), '-', ''), '+', ''), 10) = RIGHT(REPLACE(REPLACE(REPLACE(d.phone, ' ', ''), '-', ''), '+', ''), 10)
+                         OR LOWER(TRIM(s.name)) = LOWER(TRIM(d.name)))
+                    SET s.daily_salary = ? WHERE d.id = ? AND s.role = 'driver'`,
+                [dailySalary, refId]
+            );
+        } else {
+            await pool.query(
+                `UPDATE drivers d JOIN staff s
+                     ON (RIGHT(REPLACE(REPLACE(REPLACE(s.phone, ' ', ''), '-', ''), '+', ''), 10) = RIGHT(REPLACE(REPLACE(REPLACE(d.phone, ' ', ''), '-', ''), '+', ''), 10)
+                         OR LOWER(TRIM(s.name)) = LOWER(TRIM(d.name)))
+                    SET d.daily_salary = ? WHERE s.id = ? AND s.role = 'driver'`,
+                [dailySalary, refId]
+            );
+        }
+    } catch (error) {
+        console.error('⚠️  Driver salary sync skipped:', error.message);
+    }
+};
+exports.syncDriverSalary = syncDriverSalary;
+
 exports.updateDailySalary = async (req, res) => {
     try {
         const { refType, refId, dailySalary } = req.body;
@@ -274,6 +319,9 @@ exports.updateDailySalary = async (req, res) => {
         if (result.affectedRows === 0) {
             return res.status(404).json({ success: false, message: 'Employee not found' });
         }
+
+        // Keep the driver's Staff-page entry in step (same person, same wage).
+        await syncDriverSalary(refType, refId, parsedSalary);
 
         res.json({ success: true, message: 'Daily salary updated' });
     } catch (error) {
