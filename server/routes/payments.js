@@ -23,6 +23,7 @@ router.use(authMiddleware);
 
 router.get('/', paymentController.getPayments);
 router.get('/summary', paymentController.getPaymentSummary);
+router.get('/stats', paymentController.getPaymentStats);
 router.post('/checkout', paymentController.createCheckout);
 router.get('/status/:reference', paymentController.getTransactionStatus);
 router.post('/cancel/:reference', paymentController.cancelTransaction);

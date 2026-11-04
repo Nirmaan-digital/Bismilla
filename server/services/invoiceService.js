@@ -104,6 +104,25 @@ const snapshotBalance = async (connection, { paymentId, retailerId, amount, allo
   }
 };
 
+// Recalculate every shop's saved outstanding from its opening balance and
+// unpaid bills (one statement). Older code paths adjusted the saved figure
+// by adding/subtracting, so it could drift from the real amount.
+const syncAllOutstanding = async () => {
+  try {
+    await pool.query(
+      `UPDATE retailers r SET r.outstanding = (
+          COALESCE((SELECT ob.remaining_amount FROM retailer_opening_balances ob
+                     WHERE ob.retailer_id = r.id AND ob.remaining_amount >= ?), 0) +
+          COALESCE((SELECT SUM(o.balance) FROM orders o
+                     WHERE o.retailer_id = r.id AND o.order_status != 'cancelled' AND o.balance >= ?), 0)
+       )`,
+      [PAID_THRESHOLD, PAID_THRESHOLD]
+    );
+  } catch (error) {
+    console.error('⚠️  Outstanding refresh skipped:', error.message);
+  }
+};
+
 // ---------- Business details (Settings page) ----------
 const getBusiness = async () => {
   try {
@@ -584,6 +603,7 @@ const invoiceFileName = (payment) =>
 
 module.exports = {
   ensureInvoiceColumns,
+  syncAllOutstanding,
   snapshotBalance,
   getBusiness,
   saveBusiness,

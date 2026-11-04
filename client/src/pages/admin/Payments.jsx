@@ -81,7 +81,7 @@ const Payments = () => {
   const [payments, setPayments] = useState([]); // Real rows from the `payments` table
   const [justRecorded, setJustRecorded] = useState(null); // payment shown in the success window
   const [retailers, setRetailers] = useState([]);
-  const [totalOrdersAmount, setTotalOrdersAmount] = useState(0);
+  const [stats, setStats] = useState(null); // exact totals from /payments/stats
   
   const [searchTerm, setSearchTerm] = useState('');
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -113,13 +113,11 @@ const Payments = () => {
     setLoading(true);
     setError(null);
     try {
-      // 1. Fetch Total Orders Amount
-      const ordersRes = await api.get('/orders');
-      if (ordersRes.data.success) {
-        const allOrders = ordersRes.data.data || [];
-        const total = allOrders.reduce((sum, order) => sum + parseFloat(order.total_amount || 0), 0);
-        setTotalOrdersAmount(total);
-      }
+      // 1. Exact totals (billed, received, outstanding, method split),
+      // worked out on the server from every bill and payment. Fetched first:
+      // it also refreshes each shop's saved outstanding used below.
+      const statsRes = await api.get('/payments/stats', { params: { t: Date.now() } });
+      if (statsRes.data.success) setStats(statsRes.data.data);
 
       // 2. Fetch All Retailers (For the dropdown and outstanding calc)
       const retailersRes = await api.get('/retailers/customers');
@@ -150,25 +148,6 @@ const Payments = () => {
   // ============================================
   // CALCULATE STATS FROM REAL PAYMENT DATA
   // ============================================
-  const totalOutstanding = retailers.reduce((sum, r) => sum + parseFloat(r.outstanding || 0), 0);
-
-  const totalCash = payments
-    .filter((p) => p.method === 'cash')
-    .reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
-
-  const totalUPI = payments
-    .filter((p) => p.method === 'upi' || p.method === 'online')
-    .reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
-
-  const totalOfficePayments = payments
-    .filter((p) => p.collected_by_role === 'admin')
-    .reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
-
-  const totalDriverCollected = payments
-    .filter((p) => p.collected_by_role === 'driver')
-    .reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
-
-  const totalCollected = payments.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
 
   // ============================================
   // HANDLE SUBMIT NEW PAYMENT
@@ -240,13 +219,16 @@ const Payments = () => {
   // ============================================
   // HELPER FUNCTIONS
   // ============================================
+  // Exact amounts: whole rupees as ₹1,37,902, paise shown when present.
   const formatCurrency = (amount) => {
+    const value = parseFloat(amount) || 0;
+    const hasPaise = Math.round(value * 100) % 100 !== 0;
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
       currency: 'INR',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount || 0);
+      minimumFractionDigits: hasPaise ? 2 : 0,
+      maximumFractionDigits: 2,
+    }).format(value);
   };
 
   const formatDate = (dateString) => {
@@ -450,102 +432,93 @@ const Payments = () => {
         </div>
       </div>
 
-      {/* Statistics Cards -- already responsive (1 col mobile, 2 tablet, 5
-          desktop); the actual mobile breakage was in the Summary Row below,
-          which never wrapped and pushed content past the viewport. */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-6 mb-8">
-        <div className="bg-white rounded-xl border border-line p-4 sm:p-6">
-          <div className="flex items-center gap-3">
-            <div className="p-3 bg-cream rounded-lg shrink-0">
-              <FiShoppingBag className="w-5 h-5 text-ink" />
+      {/* Totals — exact, from the server. Billed = Received + Outstanding. */}
+      {stats && (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-4">
+            <div className="bg-white rounded-xl border border-line p-5">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm text-muted">Total Billed</p>
+                <span className="p-2 bg-cream rounded-lg"><FiShoppingBag className="w-4 h-4 text-ink" /></span>
+              </div>
+              <p className="mt-2 font-semibold text-ink tabular-nums whitespace-nowrap text-[clamp(1.35rem,2.2vw,1.75rem)]">
+                {formatCurrency(stats.totalBilled)}
+              </p>
+              <p className="mt-1 text-xs text-muted">
+                {stats.ordersCount} orders {formatCurrency(stats.ordersBilled)}
+                {stats.openingBalance > 0 && <> + opening balances {formatCurrency(stats.openingBalance)}</>}
+              </p>
             </div>
-            <div className="min-w-0">
-              <p className="text-sm text-muted">Total Orders</p>
-              <p className="text-2xl font-semibold text-ink truncate">{formatCurrency(totalOrdersAmount)}</p>
-            </div>
-          </div>
-        </div>
 
-        <div className="bg-white rounded-xl border border-line p-4 sm:p-6">
-          <div className="flex items-center gap-3">
-            <div className="p-3 bg-cream rounded-lg shrink-0">
-              <FiDollarSign className="w-5 h-5 text-brand" />
+            <div className="bg-white rounded-xl border border-line p-5">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm text-muted">Received</p>
+                <span className="p-2 bg-success-soft rounded-lg"><FiDollarSign className="w-4 h-4 text-success" /></span>
+              </div>
+              <p className="mt-2 font-semibold text-success tabular-nums whitespace-nowrap text-[clamp(1.35rem,2.2vw,1.75rem)]">
+                {formatCurrency(stats.received)}
+              </p>
+              <p className="mt-1 text-xs text-muted">All money paid against bills, including cash drivers collect at delivery</p>
             </div>
-            <div className="min-w-0">
-              <p className="text-sm text-muted">Cash Collected</p>
-              <p className="text-2xl font-semibold text-ink truncate">{formatCurrency(totalCash)}</p>
-            </div>
-          </div>
-        </div>
 
-        <div className="bg-white rounded-xl border border-line p-4 sm:p-6">
-          <div className="flex items-center gap-3">
-            <div className="p-3 bg-cream rounded-lg shrink-0">
-              <FiCreditCard className="w-5 h-5 text-[#3B6FD8]" />
+            <div className="bg-white rounded-xl border border-line p-5">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm text-muted">Outstanding</p>
+                <span className="p-2 bg-danger-soft rounded-lg"><FiUsers className="w-4 h-4 text-danger" /></span>
+              </div>
+              <p className="mt-2 font-semibold text-danger tabular-nums whitespace-nowrap text-[clamp(1.35rem,2.2vw,1.75rem)]">
+                {formatCurrency(stats.outstanding)}
+              </p>
+              <p className="mt-1 text-xs text-muted">
+                Still to collect from {stats.shopsWithDues} {stats.shopsWithDues === 1 ? 'shop' : 'shops'}
+              </p>
             </div>
-            <div className="min-w-0">
-              <p className="text-sm text-muted">UPI Collected</p>
-              <p className="text-2xl font-semibold text-ink truncate">{formatCurrency(totalUPI)}</p>
-            </div>
-          </div>
-        </div>
 
-        <div className="bg-white rounded-xl border border-line p-4 sm:p-6">
-          <div className="flex items-center gap-3">
-            <div className="p-3 bg-cream rounded-lg shrink-0">
-              <FiFileText className="w-5 h-5 text-[#C47A13]" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-sm text-muted">Office Payments</p>
-              <p className="text-2xl font-semibold text-ink truncate">{formatCurrency(totalOfficePayments)}</p>
+            <div className="bg-white rounded-xl border border-line p-5">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm text-muted">Collection Rate</p>
+                <span className="p-2 bg-gold-soft rounded-lg"><FiFileText className="w-4 h-4 text-gold-dark" /></span>
+              </div>
+              <p className="mt-2 font-semibold text-ink tabular-nums text-[clamp(1.35rem,2.2vw,1.75rem)]">
+                {stats.collectionRate}%
+              </p>
+              <div className="mt-2 h-2 rounded-full bg-cream overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-gold-dark via-gold to-gold-light"
+                  style={{ width: `${Math.min(100, stats.collectionRate)}%` }}
+                />
+              </div>
+              <p className="mt-1.5 text-xs text-muted">Received ÷ total billed</p>
             </div>
           </div>
-        </div>
 
-        <div className="bg-white rounded-xl border border-line p-4 sm:p-6">
-          <div className="flex items-center gap-3">
-            <div className="p-3 bg-cream rounded-lg shrink-0">
-              <FiUsers className="w-5 h-5 text-danger" />
+          {/* How the recorded payments came in */}
+          <div className="bg-white rounded-xl border border-line p-4 mb-6">
+            <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+              <p className="text-sm font-semibold text-ink">
+                Recorded payments · {stats.payments.count} · {formatCurrency(stats.payments.total)}
+              </p>
+              <p className="text-xs text-muted">All time</p>
             </div>
-            <div className="min-w-0">
-              <p className="text-sm text-muted">Outstanding</p>
-              <p className="text-2xl font-semibold text-danger truncate">{formatCurrency(totalOutstanding)}</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Summary Row -- this is what was actually overflowing on mobile:
-          a single flex row with no wrap and fixed vertical dividers. Now
-          stacks vertically on small screens and drops the dividers there. */}
-      <div className="bg-white rounded-xl border border-line p-4 mb-6">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted">Total Collected:</span>
-              <span className="text-lg font-semibold text-success">{formatCurrency(totalCollected)}</span>
-            </div>
-            <div className="hidden sm:block w-px h-8 bg-line"></div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted">Total Orders:</span>
-              <span className="text-lg font-semibold text-ink">{formatCurrency(totalOrdersAmount)}</span>
-            </div>
-            <div className="hidden sm:block w-px h-8 bg-line"></div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted">Outstanding:</span>
-              <span className="text-lg font-semibold text-danger">{formatCurrency(totalOutstanding)}</span>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+              {[
+                { label: 'Cash', value: stats.payments.cash, icon: FiDollarSign, tone: 'text-brand' },
+                { label: 'UPI / Online', value: stats.payments.upi, icon: FiCreditCard, tone: 'text-[#3B6FD8]' },
+                { label: 'Bank / Cheque', value: stats.payments.bank, icon: FiFileText, tone: 'text-[#C47A13]' },
+                { label: 'Collected at office', value: stats.payments.office, icon: FiShoppingBag, tone: 'text-ink' },
+                { label: 'Collected by drivers', value: stats.payments.driver, icon: FiUsers, tone: 'text-success' },
+              ].map(({ label, value, icon: Icon, tone }) => (
+                <div key={label} className="rounded-lg bg-cream/70 px-3 py-2.5">
+                  <p className="text-xs text-muted flex items-center gap-1.5">
+                    <Icon className={`w-3.5 h-3.5 ${tone}`} /> {label}
+                  </p>
+                  <p className="mt-0.5 text-base font-semibold text-ink tabular-nums whitespace-nowrap">{formatCurrency(value)}</p>
+                </div>
+              ))}
             </div>
           </div>
-          <div className="text-sm text-muted">
-            <span className="font-medium">Collection Rate:</span>{' '}
-            <span className="font-semibold text-success">
-              {totalOrdersAmount > 0 
-                ? `${Math.round((totalCollected / totalOrdersAmount) * 100)}%` 
-                : '0%'}
-            </span>
-          </div>
-        </div>
-      </div>
+        </>
+      )}
 
       {/* Filter bar */}
       <div className="bg-white rounded-xl border border-line p-4 mb-6 space-y-4">
@@ -677,9 +650,17 @@ const Payments = () => {
       {/* Payments Table */}
       <div className="bg-white rounded-xl border border-line overflow-hidden">
         <div className="px-6 py-4 border-b border-line">
-          <h2 className="text-lg font-semibold text-ink">
-            Recent Collections ({filteredPayments.length})
-          </h2>
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-lg font-semibold text-ink">
+              Recent Collections ({filteredPayments.length})
+            </h2>
+            <p className="text-sm text-muted">
+              Total shown:{' '}
+              <span className="font-semibold text-success tabular-nums">
+                {formatCurrency(filteredPayments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0))}
+              </span>
+            </p>
+          </div>
         </div>
 
         {filteredPayments.length > 0 ? (
@@ -687,54 +668,54 @@ const Payments = () => {
             <table className="w-full">
               <thead className="bg-cream">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-muted uppercase tracking-wider">Payment</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-muted uppercase tracking-wider">Retailer</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-muted uppercase tracking-wider">Order</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-muted uppercase tracking-wider">Balance Before</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-muted uppercase tracking-wider">Amount Paid</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-muted uppercase tracking-wider">Balance Due</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-muted uppercase tracking-wider">Method</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-muted uppercase tracking-wider">Collected By</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-muted uppercase tracking-wider">Date</th>
-                  <th className="px-6 py-3 text-right text-xs font-semibold text-muted uppercase tracking-wider">Invoice</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-muted uppercase tracking-wider">Payment</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-muted uppercase tracking-wider">Retailer</th>
+                  <th className="hidden 2xl:table-cell px-4 py-3 text-left text-xs font-semibold text-muted uppercase tracking-wider">Order</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-muted uppercase tracking-wider">Balance Before</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-muted uppercase tracking-wider">Amount Paid</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-muted uppercase tracking-wider">Balance Due</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-muted uppercase tracking-wider">Method</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-muted uppercase tracking-wider">Collected By</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-muted uppercase tracking-wider">Date</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-muted uppercase tracking-wider">Invoice</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
                 {filteredPayments.map((payment) => (
                   <tr key={payment.id} className="hover:bg-cream transition">
-                    <td className="px-6 py-4 text-sm font-medium text-ink">
+                    <td className="px-4 py-4 text-sm font-medium text-ink whitespace-nowrap">
                       {payment.payment_number}
                     </td>
-                    <td className="px-6 py-4 text-sm text-ink">
+                    <td className="px-4 py-4 text-sm text-ink">
                       {payment.shop_name || 'N/A'}
                     </td>
-                    <td className="px-6 py-4 text-sm text-muted">
+                    <td className="hidden 2xl:table-cell px-4 py-4 text-sm text-muted whitespace-nowrap">
                       {payment.order_number || '-'}
                     </td>
-                    <td className="px-6 py-4 text-sm text-ink whitespace-nowrap">
+                    <td className="px-4 py-4 text-sm text-ink whitespace-nowrap">
                       {payment.balance_before != null ? formatCurrency(payment.balance_before) : '—'}
                     </td>
-                    <td className="px-6 py-4 text-sm font-semibold text-success whitespace-nowrap">
+                    <td className="px-4 py-4 text-sm font-semibold text-success whitespace-nowrap">
                       {formatCurrency(payment.amount)}
                     </td>
-                    <td className={`px-6 py-4 text-sm font-semibold whitespace-nowrap ${parseFloat(payment.balance_after) >= 1 ? 'text-brand' : 'text-success'}`}>
+                    <td className={`px-4 py-4 text-sm font-semibold whitespace-nowrap ${parseFloat(payment.balance_after) >= 1 ? 'text-brand' : 'text-success'}`}>
                       {payment.balance_after != null ? formatCurrency(payment.balance_after) : '—'}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-4">
                       <Badge variant={getMethodColor(payment.method)}>
                         {getMethodLabel(payment.method)}
                       </Badge>
                     </td>
-                    <td className="px-6 py-4 text-sm text-ink">
+                    <td className="px-4 py-4 text-sm text-ink">
                       {payment.collected_by || 'N/A'}
                       <span className="text-xs text-muted ml-1">
                         ({payment.collected_by_role === 'admin' ? 'Office' : 'Driver'})
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-sm text-muted whitespace-nowrap">
+                    <td className="px-4 py-4 text-sm text-muted whitespace-nowrap">
                       {formatDate(payment.date || payment.created_at)}
                     </td>
-                    <td className="px-6 py-4 text-right">
+                    <td className="px-4 py-4 text-right">
                       <InvoiceButton payment={payment} />
                     </td>
                   </tr>

@@ -83,7 +83,8 @@ const getPayments = async (req, res) => {
       params.push(req.query.retailer_id);
     }
 
-    sql += ' ORDER BY p.date DESC, p.id DESC LIMIT 200';
+    // High enough that the page's date filters reach years of history.
+    sql += ' ORDER BY p.date DESC, p.id DESC LIMIT 5000';
 
     const [rows] = await pool.query(sql, params);
     res.json({ success: true, data: rows });
@@ -435,7 +436,94 @@ const getInvoiceByToken = async (req, res) => {
   }
 };
 
+// ============================================
+// GET /api/payments/stats  (admin)
+// Exact totals for the Payments page, worked out from the bills themselves:
+//   total billed  = all non-cancelled orders + opening balances
+//   received      = what has been paid against those bills
+//   outstanding   = what is still owed (same rule as every payment: a
+//                   balance under ₹1 counts as cleared)
+// So billed = received + outstanding, and the rate can never pass 100%.
+// The method / collector split comes from recorded payments.
+// Also refreshes each shop's saved outstanding figure, which older code
+// could leave out of date.
+// ============================================
+const getPaymentStats = async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+    await invoiceService.syncAllOutstanding();
+
+    const [[orders]] = await pool.query(
+      `SELECT COUNT(*) AS count,
+              COALESCE(SUM(total_amount), 0) AS billed,
+              COALESCE(SUM(CASE WHEN balance >= 1 THEN balance ELSE 0 END), 0) AS outstanding
+         FROM orders WHERE order_status != 'cancelled'`
+    );
+    let opening = { original: 0, remaining: 0 };
+    try {
+      const [[o]] = await pool.query(
+        `SELECT COALESCE(SUM(original_amount), 0) AS original,
+                COALESCE(SUM(CASE WHEN remaining_amount >= 1 THEN remaining_amount ELSE 0 END), 0) AS remaining
+           FROM retailer_opening_balances`
+      );
+      opening = o;
+    } catch {
+      /* table not created on this install */
+    }
+    const [[pay]] = await pool.query(
+      `SELECT COUNT(*) AS count,
+              COALESCE(SUM(amount), 0) AS total,
+              COALESCE(SUM(CASE WHEN method = 'cash' THEN amount END), 0) AS cash,
+              COALESCE(SUM(CASE WHEN method IN ('upi', 'online') THEN amount END), 0) AS upi,
+              COALESCE(SUM(CASE WHEN method IN ('bank_transfer', 'cheque') THEN amount END), 0) AS bank,
+              COALESCE(SUM(CASE WHEN collected_by_role = 'driver' THEN amount END), 0) AS driver,
+              COALESCE(SUM(CASE WHEN collected_by_role = 'admin' AND method != 'online' THEN amount END), 0) AS office,
+              COALESCE(SUM(CASE WHEN method = 'online' THEN amount END), 0) AS online
+         FROM payments`
+    );
+    const [[due]] = await pool.query('SELECT COUNT(*) AS shops FROM retailers WHERE outstanding >= 1');
+
+    const n = (v) => Math.round((parseFloat(v) || 0) * 100) / 100;
+    const openingOriginal = n(opening.original);
+    const openingRemaining = n(opening.remaining);
+    const billed = n(orders.billed);
+    const totalBilled = n(billed + openingOriginal);
+    const outstanding = n(n(orders.outstanding) + openingRemaining);
+    const received = n(totalBilled - outstanding);
+
+    res.json({
+      success: true,
+      data: {
+        ordersCount: Number(orders.count) || 0,
+        ordersBilled: billed,
+        openingBalance: openingOriginal,
+        totalBilled,
+        received,
+        outstanding,
+        collectionRate: totalBilled > 0 ? Math.round((received / totalBilled) * 1000) / 10 : 0,
+        shopsWithDues: Number(due.shops) || 0,
+        payments: {
+          count: Number(pay.count) || 0,
+          total: n(pay.total),
+          cash: n(pay.cash),
+          upi: n(pay.upi),
+          bank: n(pay.bank),
+          office: n(pay.office),
+          driver: n(pay.driver),
+          online: n(pay.online),
+        },
+      },
+    });
+  } catch (error) {
+    console.error('❌ getPaymentStats:', error);
+    res.status(500).json({ success: false, message: 'Could not load payment totals' });
+  }
+};
+
 module.exports = {
+  getPaymentStats,
   getInvoice,
   getInvoiceLink,
   getInvoiceByToken,
