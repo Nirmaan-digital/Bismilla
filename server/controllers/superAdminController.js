@@ -197,7 +197,6 @@ exports.getAccounts = async (req, res) => {
       success: true,
       data: rows.map((u) => ({
         ...u,
-        phone: u.role === 'superadmin' ? null : u.phone,
         actions: Number(byActor.get(u.id)?.actions) || 0,
         last_activity: byActor.get(u.id)?.last_activity || null,
         is_you: u.id === req.user.id,

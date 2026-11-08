@@ -17,7 +17,8 @@ const pool = require('../config/db');
 const SUPERADMIN_SEED = {
   name: process.env.SUPERADMIN_NAME || 'Nirmaan Digital',
   email: (process.env.SUPERADMIN_EMAIL || 'nirmaandigital01@gmail.com').trim().toLowerCase(),
-  phone: 'superadmin', // phone is required and unique; this is not a number
+  // Sign-in username (the phone number field on the login page).
+  phone: (process.env.SUPERADMIN_PHONE || '9363939199').replace(/\D/g, '').slice(-10),
 };
 
 const SENSITIVE = /pass(word)?|token|secret|otp|authorization|cookie|key|signature|card|cvv|subscription/i;
@@ -95,16 +96,34 @@ const ensureAuditSchema = async () => {
       await pool.query('ALTER TABLE users ADD COLUMN password_changed_ms BIGINT NULL');
     }
 
-    const [existing] = await pool.query("SELECT id FROM users WHERE role = 'superadmin' LIMIT 1");
+    const [existing] = await pool.query("SELECT id, phone FROM users WHERE role = 'superadmin' LIMIT 1");
+    // An account made by the first version of this update has the
+    // placeholder phone 'superadmin': give it the real sign-in number.
+    if (existing.length && existing[0].phone !== SUPERADMIN_SEED.phone && !/^\d{10}$/.test(existing[0].phone || '')) {
+      const [taken] = await pool.query('SELECT id FROM users WHERE phone = ? AND id != ?', [SUPERADMIN_SEED.phone, existing[0].id]);
+      if (taken.length) {
+        console.warn(`⚠️  Super admin sign-in number ${SUPERADMIN_SEED.phone} is already used by another account.`);
+      } else {
+        await pool.query('UPDATE users SET phone = ? WHERE id = ?', [SUPERADMIN_SEED.phone, existing[0].id]);
+      }
+    }
     if (!existing.length) {
       const password = process.env.SUPERADMIN_PASSWORD || '';
       if (password.length < 8) {
         console.warn('⚠️  No super admin yet: set SUPERADMIN_PASSWORD (8+ characters) and restart to create it.');
       } else {
         const hash = await bcrypt.hash(password, 12);
-        const [byEmail] = await pool.query('SELECT id FROM users WHERE LOWER(email) = ?', [SUPERADMIN_SEED.email]);
-        if (byEmail.length) {
-          await pool.query("UPDATE users SET role = 'superadmin', status = 'active', password = ? WHERE id = ?", [hash, byEmail[0].id]);
+        // If the number or email already belongs to an account, that account
+        // becomes the super admin; otherwise a new one is created.
+        const [found] = await pool.query(
+          'SELECT id FROM users WHERE phone = ? OR LOWER(email) = ? ORDER BY phone = ? DESC LIMIT 1',
+          [SUPERADMIN_SEED.phone, SUPERADMIN_SEED.email, SUPERADMIN_SEED.phone]
+        );
+        if (found.length) {
+          await pool.query(
+            "UPDATE users SET role = 'superadmin', status = 'active', password = ?, phone = ? WHERE id = ?",
+            [hash, SUPERADMIN_SEED.phone, found[0].id]
+          );
         } else {
           await pool.query(
             `INSERT INTO users (name, email, phone, password, role, status)
