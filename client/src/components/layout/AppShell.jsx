@@ -201,7 +201,7 @@ const AppShell = ({ groups, portal, profilePath, refreshProfile = false }) => {
     groups,
     portal,
     displayName,
-    role: user?.role || portal,
+    role: user?.role === 'superadmin' ? 'Super Admin' : user?.role || portal,
     onLogout: handleLogout,
   };
 
@@ -308,7 +308,7 @@ const AppShell = ({ groups, portal, profilePath, refreshProfile = false }) => {
                     >
                       <div className="px-4 py-3.5 bg-gradient-to-br from-coal-2 to-coal text-white">
                         <p className="text-sm font-semibold truncate">{displayName}</p>
-                        <p className="text-xs text-gold/90 capitalize">{user?.role || portal}</p>
+                        <p className="text-xs text-gold/90 capitalize">{user?.role === 'superadmin' ? 'Super Admin' : user?.role || portal}</p>
                       </div>
                       <div className="py-1.5">
                         {profilePath && (

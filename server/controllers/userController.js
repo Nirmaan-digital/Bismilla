@@ -1,6 +1,7 @@
 const pool = require('../config/db');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { forgetAccount } = require('../middleware/auth');
 
 // Get all users
 const getAllUsers = async (req, res) => {
@@ -17,6 +18,7 @@ const getAllUsers = async (req, res) => {
         last_login as lastLogin,
         DATE_FORMAT(created_at, '%d %b %Y') as createdAt
       FROM users 
+      WHERE role != 'superadmin'
       ORDER BY id DESC
     `);
     
@@ -79,8 +81,11 @@ const createUser = async (req, res) => {
   const connection = await pool.getConnection();
   
   try {
-    console.log('➕ Creating new user:', req.body);
     const { name, email, phone, role, password, openingOutstanding } = req.body;
+    // The super admin account is managed only from Security → Accounts.
+    if (role === 'superadmin') {
+      return res.status(403).json({ success: false, message: 'That role cannot be created here' });
+    }
     
     // Validate input
     if (!name || !phone || !role || !password) {
@@ -279,8 +284,9 @@ const updateUser = async (req, res) => {
   try {
     const { id } = req.params;
     const { name, email, phone, role, status } = req.body;
-    
-    console.log(`✏️ Updating user ${id}:`, req.body);
+    if (role === 'superadmin') {
+      return res.status(403).json({ success: false, message: 'That role cannot be given here' });
+    }
     
     // Check if user exists
     const [existing] = await pool.query(
@@ -450,6 +456,7 @@ const toggleUserStatus = async (req, res) => {
       'UPDATE users SET status = ? WHERE id = ?',
       [status, id]
     );
+    forgetAccount(id);
     
     console.log(`✅ User ${id} status updated to ${status}`);
     
@@ -465,6 +472,34 @@ const toggleUserStatus = async (req, res) => {
       message: 'Error updating user status',
       error: error.message
     });
+  }
+};
+
+// Save a new password hash and sign that account out of every device.
+const setPassword = async (id, hashedPassword) => {
+  try {
+    await pool.query('UPDATE users SET password = ?, password_changed_ms = ? WHERE id = ?', [hashedPassword, Date.now(), id]);
+  } catch {
+    await pool.query('UPDATE users SET password = ? WHERE id = ?', [hashedPassword, id]);
+  }
+  forgetAccount(id);
+};
+
+// /api/users/:id routes: the super admin account is invisible here (it is
+// managed from Security → Accounts), and the target user is noted for the
+// activity log.
+const loadTargetUser = async (req, res, next) => {
+  try {
+    const [rows] = await pool.query('SELECT id, name, role FROM users WHERE id = ?', [req.params.id]);
+    if (rows.length && rows[0].role === 'superadmin') {
+      req.auditTarget = { type: 'user', id: rows[0].id, name: `${rows[0].name} (super admin)` };
+      req.auditSummary = 'Blocked: tried to change the super admin account';
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+    if (rows.length) req.auditTarget = { type: 'user', id: rows[0].id, name: `${rows[0].name} (${rows[0].role})` };
+    next();
+  } catch (error) {
+    next(error);
   }
 };
 
@@ -498,10 +533,7 @@ const updatePassword = async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
     
-    await pool.query(
-      'UPDATE users SET password = ? WHERE id = ?',
-      [hashedPassword, id]
-    );
+    await setPassword(id, hashedPassword);
     
     res.status(200).json({
       success: true,
@@ -547,5 +579,7 @@ module.exports = {
   deleteUser,
   toggleUserStatus,
   updatePassword,
-  updateLastLogin
+  updateLastLogin,
+  loadTargetUser,
+  setPassword,
 };

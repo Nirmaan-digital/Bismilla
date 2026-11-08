@@ -5,6 +5,7 @@ const userController = require('../controllers/userController');
 
 // Admin only: every route below needs a signed-in admin.
 router.use(authMiddleware, requireRole('admin'));
+router.param('id', userController.loadTargetUser);
 
 // User CRUD routes
 router.route('/')

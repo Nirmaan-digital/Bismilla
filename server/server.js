@@ -11,6 +11,7 @@ const ensureIndexes = require('./config/ensureIndexes');
 const { ensureNotificationTables } = require('./services/notificationService');
 const { ensureInvoiceColumns } = require('./services/invoiceService');
 const fileStore = require('./services/fileStore');
+const audit = require('./services/auditService');
 const {
   securityHeaders,
   scrubServerErrors,
@@ -139,6 +140,8 @@ app.use(express.urlencoded({ extended: false, limit: '1mb' }));
 app.get('/api/files/:key', fileStore.serveFile);
 
 app.use('/api', apiLimiter, countApiRequests);
+// Activity log: records every change and download once it has happened.
+app.use(audit.auditRequests);
 app.use('/api/auth/login', (req, res, next) => (req.method === 'POST' ? loginLimiter(req, res, next) : next()));
 
 // Never send SQL/stack details to the browser in production.
@@ -258,6 +261,7 @@ app.use('/api/expenses', expensesRoutes);
 app.use('/api/salaries', salariesRoutes);
 app.use('/api/trip-overview', tripOverviewRoutes); // admin loaded-vs-delivered reconciliation
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/superadmin', require('./routes/superadmin')); // 🛡️ Security (super admin)
 
 // The old /api/debug-routes handler read app._router, which no longer exists
 // in Express 5 — it would have thrown. It also published the full route map
@@ -310,6 +314,7 @@ app.listen(PORT, '0.0.0.0', () => {
   ensureNotificationTables();
   ensureInvoiceColumns();
   fileStore.ensureFileTable();
+  audit.ensureAuditSchema();
   console.log(`✔ Server running on port ${PORT} (${IS_DEV ? 'development' : 'production'})`);
   console.log(`💳 Payment provider: ${process.env.PAYMENT_PROVIDER || 'stripe'}`);
   console.log(`🌐 Allowed origins: ${allowedOrigins.join(', ')}`);

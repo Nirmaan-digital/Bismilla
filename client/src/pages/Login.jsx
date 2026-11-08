@@ -7,6 +7,7 @@ import { useAuth } from "../context/AuthContext";
 import axios from "axios";
 import {
   FiPhone,
+  FiMail,
   FiLock,
   FiEye,
   FiEyeOff,
@@ -15,6 +16,7 @@ import {
 } from "react-icons/fi";
 
 const HOME = {
+  superadmin: "/superadmin/dashboard",
   admin: "/admin/dashboard",
   retailer: "/retailer/dashboard",
   driver: "/driver/dashboard",
@@ -25,6 +27,8 @@ const Login = () => {
   const { login, user, isAuthenticated } = useAuth();
 
   const [phone, setPhone] = useState("");
+  // Most people sign in with their phone; the company's team uses email.
+  const [useEmail, setUseEmail] = useState(false);
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
@@ -39,11 +43,11 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
     setError("");
 
     if (!phone || !password) {
-      setError("Please enter your phone number and password.");
+      setError(useEmail ? "Please enter your email and password." : "Please enter your phone number and password.");
       return;
     }
-    if (phone.length < 10) {
-      setError("Please enter a valid 10-digit phone number.");
+    if (useEmail ? !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(phone.trim()) : phone.length < 10) {
+      setError(useEmail ? "Please enter a valid email address." : "Please enter a valid 10-digit phone number.");
       return;
     }
     if (password.length < 6) {
@@ -54,7 +58,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
     setIsLoading(true);
 
     try {
-      const response = await axios.post(`${API_URL}/auth/login`, { phone, password });
+      const response = await axios.post(`${API_URL}/auth/login`, { phone: phone.trim(), password });
 
       if (response.data.success) {
         const userData = response.data.data;
@@ -212,20 +216,41 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
             <form onSubmit={handleSubmit} className="space-y-5">
               <div>
-                <label className="mb-2 block text-xs font-semibold text-ink">Phone Number</label>
+                <div className="mb-2 flex items-center justify-between">
+                  <label className="block text-xs font-semibold text-ink">{useEmail ? "Email" : "Phone Number"}</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUseEmail((v) => !v);
+                      setPhone("");
+                      setError("");
+                    }}
+                    className="text-xs font-semibold text-gold-dark hover:text-brand transition"
+                  >
+                    {useEmail ? "Use phone number" : "Use email instead"}
+                  </button>
+                </div>
                 <div className="flex h-14 items-center rounded-xl border border-line bg-white px-4 transition focus-within:border-gold focus-within:ring-4 focus-within:ring-gold/15">
-                  <FiPhone className="mr-3 text-lg text-gold-dark" />
-                  <span className="mr-3 border-r border-line pr-3 text-sm font-medium text-muted">+91</span>
+                  {useEmail ? (
+                    <FiMail className="mr-3 text-lg text-gold-dark" />
+                  ) : (
+                    <>
+                      <FiPhone className="mr-3 text-lg text-gold-dark" />
+                      <span className="mr-3 border-r border-line pr-3 text-sm font-medium text-muted">+91</span>
+                    </>
+                  )}
                   <input
-                    type="tel"
-                    inputMode="numeric"
-                    maxLength={10}
+                    key={useEmail ? "email" : "phone"}
+                    type={useEmail ? "email" : "tel"}
+                    inputMode={useEmail ? "email" : "numeric"}
+                    maxLength={useEmail ? 120 : 10}
                     value={phone}
-                    onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))}
-                    placeholder="Enter phone number"
+                    onChange={(e) => setPhone(useEmail ? e.target.value : e.target.value.replace(/\D/g, ""))}
+                    placeholder={useEmail ? "Enter email address" : "Enter phone number"}
                     className="h-full w-full bg-transparent text-sm text-ink outline-none placeholder:text-muted-light"
                     disabled={isLoading}
-                    autoComplete="tel"
+                    autoComplete={useEmail ? "email" : "tel"}
+                    autoCapitalize="none"
                   />
                 </div>
               </div>

@@ -1,5 +1,8 @@
 const pool = require('../config/db');
 const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const { JWT_SECRET, JWT_EXPIRES_IN } = require('../config/jwt');
+const { setPassword } = require('./userController');
 const invoiceService = require('../services/invoiceService');
 
 // ============================================
@@ -84,9 +87,13 @@ exports.changePassword = async (req, res) => {
     try {
         const userId = req.user.id;
         const { currentPassword, newPassword } = req.body;
+        if (typeof currentPassword !== 'string' || typeof newPassword !== 'string' ||
+            newPassword.length < 6 || newPassword.length > 200) {
+            return res.status(400).json({ success: false, message: 'New password must be at least 6 characters' });
+        }
 
         // 1. Get the user's current hashed password from DB
-        const [users] = await pool.query('SELECT password FROM users WHERE id = ?', [userId]);
+        const [users] = await pool.query('SELECT id, name, phone, role, password FROM users WHERE id = ?', [userId]);
         if (users.length === 0) {
             return res.status(404).json({ success: false, message: 'User not found' });
         }
@@ -99,9 +106,13 @@ exports.changePassword = async (req, res) => {
 
         // 3. Hash the new password and save
         const hashedPassword = await bcrypt.hash(newPassword, 10);
-        await pool.query('UPDATE users SET password = ? WHERE id = ?', [hashedPassword, userId]);
+        await setPassword(userId, hashedPassword);
+        req.auditTarget = { type: 'user', id: userId, name: `${users[0].name} (own account)` };
 
-        res.json({ success: true, message: 'Password changed successfully!' });
+        // Other devices are signed out; this one gets a fresh session.
+        const u = users[0];
+        const token = jwt.sign({ id: u.id, phone: u.phone, role: u.role, name: u.name }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+        res.json({ success: true, message: 'Password changed successfully! Other devices have been signed out.', token });
     } catch (error) {
         console.error('Error changing password:', error);
         res.status(500).json({ success: false, message: 'Failed to change password' });

@@ -15,8 +15,13 @@ import {
   FiMap,
   FiTag,
   FiAward,
+  FiShield,
+  FiActivity,
+  FiLogIn,
+  FiKey,
 } from 'react-icons/fi';
 import AppShell from './AppShell';
+import { useAuth } from '../../context/AuthContext';
 
 const ADMIN_NAV = [
   {
@@ -59,8 +64,28 @@ const ADMIN_NAV = [
 ];
 
 
-const DashboardLayout = () => (
-  <AppShell groups={ADMIN_NAV} portal="Admin Portal" profilePath="/admin/settings" refreshProfile />
-);
+// Only the super admin sees this section.
+const SECURITY_NAV = {
+  category: 'Security',
+  items: [
+    { path: '/superadmin/dashboard', label: 'Control Center', icon: FiShield },
+    { path: '/superadmin/activity', label: 'Activity Log', icon: FiActivity },
+    { path: '/superadmin/logins', label: 'Login History', icon: FiLogIn },
+    { path: '/superadmin/accounts', label: 'Accounts & Passwords', icon: FiKey },
+  ],
+};
+
+const DashboardLayout = () => {
+  const { user } = useAuth();
+  const isSuperAdmin = user?.role === 'superadmin';
+  return (
+    <AppShell
+      groups={isSuperAdmin ? [SECURITY_NAV, ...ADMIN_NAV] : ADMIN_NAV}
+      portal={isSuperAdmin ? 'Super Admin' : 'Admin Portal'}
+      profilePath="/admin/settings"
+      refreshProfile
+    />
+  );
+};
 
 export default DashboardLayout;

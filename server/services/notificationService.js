@@ -330,7 +330,7 @@ const notifyWhen = (resolveUserIds, msg) => {
 // Recipient helpers
 // --------------------------------------------
 const adminUserIds = async () => {
-  const [rows] = await pool.query("SELECT id FROM users WHERE role = 'admin' AND status = 'active'");
+  const [rows] = await pool.query("SELECT id FROM users WHERE role IN ('admin', 'superadmin') AND status = 'active'");
   return rows.map((r) => r.id);
 };
 

@@ -111,6 +111,8 @@ const Settings = () => {
         currentPassword: passwordData.currentPassword,
         newPassword: passwordData.newPassword
       });
+      // Other devices were signed out; keep this one signed in.
+      if (res.data.token) localStorage.setItem('token', res.data.token);
       setSuccess(res.data.message);
       setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
     } catch (err) {

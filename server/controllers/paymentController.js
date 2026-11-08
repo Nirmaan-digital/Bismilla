@@ -448,11 +448,7 @@ const getInvoiceByToken = async (req, res) => {
 // Also refreshes each shop's saved outstanding figure, which older code
 // could leave out of date.
 // ============================================
-const getPaymentStats = async (req, res) => {
-  try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ success: false, message: 'Access denied' });
-    }
+const computePaymentStats = async () => {
     await invoiceService.syncAllOutstanding();
 
     const [[orders]] = await pool.query(
@@ -493,9 +489,7 @@ const getPaymentStats = async (req, res) => {
     const outstanding = n(n(orders.outstanding) + openingRemaining);
     const received = n(totalBilled - outstanding);
 
-    res.json({
-      success: true,
-      data: {
+    return {
         ordersCount: Number(orders.count) || 0,
         ordersBilled: billed,
         openingBalance: openingOriginal,
@@ -514,8 +508,15 @@ const getPaymentStats = async (req, res) => {
           driver: n(pay.driver),
           online: n(pay.online),
         },
-      },
-    });
+      };
+};
+
+const getPaymentStats = async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+    res.json({ success: true, data: await computePaymentStats() });
   } catch (error) {
     console.error('❌ getPaymentStats:', error);
     res.status(500).json({ success: false, message: 'Could not load payment totals' });
@@ -524,6 +525,7 @@ const getPaymentStats = async (req, res) => {
 
 module.exports = {
   getPaymentStats,
+  computePaymentStats,
   getInvoice,
   getInvoiceLink,
   getInvoiceByToken,

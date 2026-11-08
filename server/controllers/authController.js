@@ -2,8 +2,10 @@ const pool = require('../config/db');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET, JWT_EXPIRES_IN } = require('../config/jwt');
+const audit = require('../services/auditService');
 
-// Login user
+// Login user (phone number, or email for accounts that have one).
+// Every attempt is written to the activity log with its IP address.
 const login = async (req, res) => {
   try {
     const { phone, password } = req.body;
@@ -15,17 +17,30 @@ const login = async (req, res) => {
         message: 'Phone number and password are required'
       });
     }
+
+    const identifier = phone.trim().slice(0, 120);
+    const byEmail = identifier.includes('@');
+    const failed = (reason, user) =>
+      audit.record(req, {
+        actor: user ? { id: user.id, name: user.name, role: user.role } : { name: identifier },
+        action: 'Sign-in failed',
+        category: 'login',
+        success: false,
+        statusCode: 401,
+        summary: `${reason} (${identifier})`,
+      });
     
-    // Find user by phone
+    // Find user by phone or email
     const [users] = await pool.query(
-      'SELECT * FROM users WHERE phone = ?',
-      [phone]
+      byEmail ? 'SELECT * FROM users WHERE LOWER(email) = LOWER(?)' : 'SELECT * FROM users WHERE phone = ?',
+      [identifier]
     );
     
     if (users.length === 0) {
+      failed('Unknown account');
       return res.status(401).json({
         success: false,
-        message: 'Invalid phone number or password'
+        message: byEmail ? 'Invalid email or password' : 'Invalid phone number or password'
       });
     }
     
@@ -33,6 +48,7 @@ const login = async (req, res) => {
     
     // Check if user is active
     if (user.status !== 'active') {
+      failed('Account is inactive', user);
       return res.status(401).json({
         success: false,
         message: 'Your account is inactive. Please contact administrator.'
@@ -43,17 +59,27 @@ const login = async (req, res) => {
     const isPasswordValid = await bcrypt.compare(password, user.password);
     
     if (!isPasswordValid) {
+      failed('Wrong password', user);
       return res.status(401).json({
         success: false,
-        message: 'Invalid phone number or password'
+        message: byEmail ? 'Invalid email or password' : 'Invalid phone number or password'
       });
     }
     
     // Update last login
-    await pool.query(
-      'UPDATE users SET last_login = NOW() WHERE id = ?',
-      [user.id]
-    );
+    const ip = audit.clientIp(req);
+    try {
+      await pool.query('UPDATE users SET last_login = NOW(), last_login_ip = ? WHERE id = ?', [ip, user.id]);
+    } catch {
+      await pool.query('UPDATE users SET last_login = NOW() WHERE id = ?', [user.id]);
+    }
+    audit.record(req, {
+      actor: { id: user.id, name: user.name, role: user.role },
+      action: 'Signed in',
+      category: 'login',
+      statusCode: 200,
+      summary: byEmail ? `With email ${identifier}` : `With phone ${identifier}`,
+    });
     
     // Generate JWT token (secret comes from config/jwt.js, which refuses to
     // start without a real JWT_SECRET)

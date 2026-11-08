@@ -27,6 +27,10 @@ const CashVerification = lazy(() => import('../pages/admin/CashVerification'));
 const Expenses = lazy(() => import('../pages/admin/Expenses'));
 const Salaries = lazy(() => import('../pages/admin/Salaries'));
 const TripOverview = lazy(() => import('../pages/admin/TripOverview'));
+const ControlCenter = lazy(() => import('../pages/superadmin/ControlCenter'));
+const ActivityLog = lazy(() => import('../pages/superadmin/ActivityLog'));
+const LoginHistory = lazy(() => import('../pages/superadmin/LoginHistory'));
+const Accounts = lazy(() => import('../pages/superadmin/Accounts'));
 const RetailerDashboard = lazy(() => import('../pages/retailer/RetailerDashboard'));
 const RetailerPlaceOrder = lazy(() => import('../pages/retailer/RetailerPlaceOrder'));
 const RetailerOrders = lazy(() => import('../pages/retailer/RetailerOrders'));
@@ -60,8 +64,18 @@ const AppRoutes = () => {
         <Route path="/login" element={<Login />} />
         <Route path="/" element={<Navigate to="/login" replace />} />
 
+        {/* Super admin: Security section (plus everything an admin has) */}
+        <Route element={<ProtectedRoute allowedRoles={['superadmin']} />}>
+          <Route element={<DashboardLayout />}>
+            <Route path="/superadmin/dashboard" element={<ControlCenter />} />
+            <Route path="/superadmin/activity" element={<ActivityLog />} />
+            <Route path="/superadmin/logins" element={<LoginHistory />} />
+            <Route path="/superadmin/accounts" element={<Accounts />} />
+          </Route>
+        </Route>
+
         {/* Admin Routes */}
-        <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
+        <Route element={<ProtectedRoute allowedRoles={['admin', 'superadmin']} />}>
           <Route element={<DashboardLayout />}>
             <Route path="/admin/dashboard" element={<AdminDashboard />} />
             <Route path="/admin/pricing" element={<Pricing />} />

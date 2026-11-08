@@ -12,7 +12,13 @@ const accountCache = new Map();
 const loadAccount = async (id) => {
   const hit = accountCache.get(id);
   if (hit && hit.at > Date.now() - ACCOUNT_TTL_MS) return hit.account;
-  const [rows] = await pool.query('SELECT id, role, status FROM users WHERE id = ?', [id]);
+  let rows;
+  try {
+    [rows] = await pool.query('SELECT id, role, status, password_changed_ms FROM users WHERE id = ?', [id]);
+  } catch {
+    // Before the password_changed_ms column exists (first start of an update).
+    [rows] = await pool.query('SELECT id, role, status FROM users WHERE id = ?', [id]);
+  }
   const account = rows[0] || null;
   accountCache.set(id, { at: Date.now(), account });
   if (accountCache.size > 5000) accountCache.clear();
@@ -56,17 +62,27 @@ const authMiddleware = async (req, res, next) => {
     if (!account || account.status !== 'active' || account.role !== decoded.role) {
       return res.status(401).json({ success: false, message: 'Session expired. Please log in again.' });
     }
+    // A password change signs the account out everywhere: sessions started
+    // before the change stop working.
+    if (account.password_changed_ms && decoded.iat * 1000 < Number(account.password_changed_ms) - 1000) {
+      return res.status(401).json({ success: false, message: 'Your password was changed. Please log in again.' });
+    }
 
+    // The super admin can do everything an admin can: existing admin checks
+    // see role 'admin', and super-admin-only checks use isSuperAdmin.
+    const isSuperAdmin = decoded.role === 'superadmin';
     req.user = {
       id: decoded.id,
       phone: decoded.phone,
-      role: decoded.role,
+      role: isSuperAdmin ? 'admin' : decoded.role,
+      actualRole: decoded.role,
+      isSuperAdmin,
       name: decoded.name,
     };
 
     // Kept for older controllers that read these directly.
     req.userId = decoded.id;
-    req.userRole = decoded.role;
+    req.userRole = req.user.role;
   } catch (error) {
     let message = 'Invalid token';
     if (error.name === 'TokenExpiredError') message = 'Session expired. Please log in again.';
@@ -99,6 +115,20 @@ const requireRole = (...roles) => (req, res, next) => {
   next();
 };
 
+// Super admin only (the Security section).
+const requireSuperAdmin = (req, res, next) => {
+  if (!req.user) return res.status(401).json({ success: false, message: 'Not authenticated' });
+  if (!req.user.isSuperAdmin) {
+    return res.status(403).json({ success: false, message: 'Only the super admin can do that' });
+  }
+  next();
+};
+
+// Forget a cached account at once (after a password or status change).
+const forgetAccount = (id) => accountCache.delete(Number(id));
+
 module.exports = authMiddleware;
+module.exports.requireSuperAdmin = requireSuperAdmin;
+module.exports.forgetAccount = forgetAccount;
 module.exports.authMiddleware = authMiddleware;
 module.exports.requireRole = requireRole;
